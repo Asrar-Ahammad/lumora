@@ -31,7 +31,7 @@ export async function GET(req: Request) {
       nextCursor = nextItem?.id;
     }
 
-    const mediaWithUrls = media.map((m) => ({
+    const mediaWithUrls = media.map((m: any) => ({
       ...m,
       sizeBytes: m.sizeBytes ? m.sizeBytes.toString() : "0",
       url: m.r2Key ? `/api/media/download?key=${encodeURIComponent(m.r2Key)}` : "",

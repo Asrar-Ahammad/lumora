@@ -10,6 +10,8 @@ import { TrashPanel } from "./trash-panel";
 import { StoragePanel } from "./storage-panel";
 import { useCrypto } from "./crypto-provider";
 import { decryptText, generateNodeKey, encryptText, encryptNodeKey } from "@/lib/crypto";
+import { FileViewer } from "./file-viewer";
+import { UniversalSearchDialog } from "./universal-search-dialog";
 import { 
   FolderPlus, GridNine, List, Info, ShieldCheck, Folder, 
   FileText, Calendar, HardDrive, MagnifyingGlass, CloudArrowUp,
@@ -80,6 +82,15 @@ export function DashboardClient() {
   const [query, setQuery] = React.useState("");
   const [isAISearch, setIsAISearch] = React.useState(false); // E2EE semantic search setting
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+
+  // Universal search & autocomplete index states
+  const [isSearchDialogOpen, setIsSearchDialogOpen] = React.useState(false);
+  const [decryptedSearchNodes, setDecryptedSearchNodes] = React.useState<any[]>([]);
+  const [decFoldersMap, setDecFoldersMap] = React.useState<Map<string, any>>(new Map());
+  const [indexingSearch, setIndexingSearch] = React.useState(false);
+  const [isSearchIndexLoaded, setIsSearchIndexLoaded] = React.useState(false);
+  const [globalViewerNode, setGlobalViewerNode] = React.useState<any | null>(null);
+  const [globalViewerKey, setGlobalViewerKey] = React.useState<CryptoKey | null>(null);
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(0);
   const [isUploadOpen, setIsUploadOpen] = React.useState(false);
@@ -352,6 +363,94 @@ export function DashboardClient() {
     decryptCap();
   }, [selectedNode]);
 
+  // Load and decrypt search index in client memory
+  const loadSearchIndex = React.useCallback(async () => {
+    if (isSearchIndexLoaded || indexingSearch) return;
+    try {
+      setIndexingSearch(true);
+      const res = await fetch("/api/nodes?category=all");
+      if (!res.ok) throw new Error("Failed to fetch search index");
+      const data = await res.json();
+      
+      const nodes = data.nodes || [];
+      const folders = data.folders || [];
+      
+      const fMap = new Map();
+      folders.forEach((f: any) => fMap.set(f.id, f));
+      
+      // Stage 1: Decrypt Folders
+      const foldersDecMap = new Map<string, any>();
+      await Promise.all(
+        folders.map(async (folder: any) => {
+          try {
+            const key = await decryptNodeKeyCascade(folder, fMap);
+            let name = folder.name;
+            if (folder.nameEnc && folder.nameIV) {
+              const decName = await decryptText(folder.nameEnc, key, folder.nameIV);
+              try {
+                const parsed = JSON.parse(decName);
+                name = parsed.name || parsed.filename;
+              } catch {
+                name = decName;
+              }
+            }
+            foldersDecMap.set(folder.id, { ...folder, name, nodeKey: key });
+          } catch (err) {
+            console.error("Failed to decrypt folder node:", folder.id, err);
+          }
+        })
+      );
+      setDecFoldersMap(foldersDecMap);
+
+      // Stage 2: Decrypt Nodes
+      const decryptedList: any[] = [];
+      await Promise.all(
+        nodes.map(async (node: any) => {
+          try {
+            const key = await decryptNodeKeyCascade(node, fMap);
+            let name = node.name;
+            if (node.nameEnc && node.nameIV) {
+              const decName = await decryptText(node.nameEnc, key, node.nameIV);
+              try {
+                const parsed = JSON.parse(decName);
+                name = parsed.name || parsed.filename;
+              } catch {
+                name = decName;
+              }
+            }
+            decryptedList.push({
+              ...node,
+              name,
+              nodeKey: key,
+              fileIv: node.fileIv || undefined
+            });
+          } catch (err) {
+            console.error("Failed to decrypt search node:", node.id, err);
+          }
+        })
+      );
+      
+      setDecryptedSearchNodes(decryptedList);
+      setIsSearchIndexLoaded(true);
+    } catch (err) {
+      console.error("Search index loader error:", err);
+    } finally {
+      setIndexingSearch(false);
+    }
+  }, [decryptNodeKeyCascade, isSearchIndexLoaded, indexingSearch]);
+
+  // Keyboard shortcut listener for Cmd+K / Ctrl+K
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsSearchDialogOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // Traverse to a folder
   const handleNavigate = (
     folderId: string | null,
@@ -513,6 +612,15 @@ export function DashboardClient() {
           onUploadClick={() => setIsUploadOpen(true)} 
           onSettingsClick={() => setIsSettingsOpen(true)}
           onMenuClick={() => setIsMobileSidebarOpen(true)}
+          decryptedSearchNodes={decryptedSearchNodes}
+          decFoldersMap={decFoldersMap}
+          loadSearchIndex={loadSearchIndex}
+          isSearchIndexLoaded={isSearchIndexLoaded}
+          onNavigate={handleNavigate}
+          onOpenViewer={(node, nodeKey, name, fileIv) => {
+            setGlobalViewerNode(node);
+            setGlobalViewerKey(nodeKey);
+          }}
         />
         
         {isAISearch && (
@@ -897,6 +1005,34 @@ export function DashboardClient() {
         aiSearchEnabled={isAISearch}
         onToggleAISearch={handleToggleAISearch}
       />
+
+      {/* Universal Search Dialog */}
+      <UniversalSearchDialog
+        isOpen={isSearchDialogOpen}
+        onClose={() => setIsSearchDialogOpen(false)}
+        onNavigate={handleNavigate}
+        onOpenViewer={(node, nodeKey, name, fileIv) => {
+          setGlobalViewerNode(node);
+          setGlobalViewerKey(nodeKey);
+        }}
+        decryptedSearchNodes={decryptedSearchNodes}
+        decFoldersMap={decFoldersMap}
+        indexing={indexingSearch}
+        loadSearchIndex={loadSearchIndex}
+      />
+
+      {/* Global File Viewer for search results */}
+      {globalViewerNode && globalViewerKey && (
+        <FileViewer
+          isOpen={!!globalViewerNode}
+          onClose={() => {
+            setGlobalViewerNode(null);
+            setGlobalViewerKey(null);
+          }}
+          node={globalViewerNode}
+          nodeKey={globalViewerKey}
+        />
+      )}
     </div>
   );
 }
