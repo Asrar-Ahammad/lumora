@@ -49,6 +49,15 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
         },
         orderBy: { createdAt: "desc" },
       });
+    } else if (category === "starred") {
+      return await prisma.node.findMany({
+        where: {
+          userId,
+          starred: true,
+          trashedAt: null,
+        },
+        orderBy: { createdAt: "desc" },
+      });
     } else {
       // all files/folders (excluding trash)
       return await prisma.node.findMany({
@@ -285,10 +294,19 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { nameEnc, nameIV } = body;
+    const { nameEnc, nameIV, starred } = body;
 
-    if (!nameEnc || !nameIV) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    const updateData: any = {};
+    if (nameEnc !== undefined && nameIV !== undefined) {
+      updateData.nameEnc = nameEnc;
+      updateData.nameIV = nameIV;
+    }
+    if (starred !== undefined) {
+      updateData.starred = starred;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: "Missing required fields to update" }, { status: 400 });
     }
 
     const node = await prisma.node.findUnique({
@@ -301,10 +319,7 @@ export async function PATCH(req: Request) {
 
     const updatedNode = await prisma.node.update({
       where: { id },
-      data: {
-        nameEnc,
-        nameIV,
-      },
+      data: updateData,
     });
 
     revalidateTag(`user-nodes-${userId}`);

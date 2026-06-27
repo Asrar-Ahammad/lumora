@@ -4,7 +4,7 @@ import * as React from "react";
 import { 
   Folder, FileText, Star, Video, Archive, HardDrive, 
   Image as ImageIcon, MusicNote, Trash, CaretLeft, CaretRight,
-  Cloud, ShieldCheck, X
+  Cloud, ShieldCheck, X, Gear
 } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
 
@@ -25,6 +25,7 @@ interface SidebarProps {
   setIsCollapsed: (collapsed: boolean) => void;
   isMobileOpen?: boolean;
   setIsMobileOpen?: (open: boolean) => void;
+  onSettingsClick?: () => void;
 }
 
 export function Sidebar({ 
@@ -38,7 +39,8 @@ export function Sidebar({
   isCollapsed,
   setIsCollapsed,
   isMobileOpen,
-  setIsMobileOpen
+  setIsMobileOpen,
+  onSettingsClick
 }: SidebarProps) {
   // Format total storage used
   const formatStorage = (bytes: number) => {
@@ -112,6 +114,22 @@ export function Sidebar({
           >
             <HardDrive size={22} weight={activeCategory === "drive" ? "fill" : "regular"} className="flex-shrink-0" />
             {!isCollapsed && <span className="truncate">My Drive</span>}
+          </button>
+        </div>
+
+        {/* Starred Button */}
+        <div>
+          <button 
+            onClick={() => setActiveCategory("starred")}
+            className={`flex items-center transition-colors font-medium ${
+              isCollapsed
+                ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "starred" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                : `w-full justify-start gap-4 px-4 py-2.5 rounded-full ${activeCategory === "starred" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+            }`}
+            title={isCollapsed ? "Starred" : undefined}
+          >
+            <Star size={22} weight={activeCategory === "starred" ? "fill" : "regular"} className="flex-shrink-0" />
+            {!isCollapsed && <span className="truncate">Starred</span>}
           </button>
         </div>
 
@@ -338,6 +356,21 @@ export function Sidebar({
               </div>
 
               <div>
+                <button 
+                  onClick={() => {
+                    setActiveCategory("starred");
+                    setIsMobileOpen?.(false);
+                  }}
+                  className={`flex items-center w-full justify-start gap-4 px-4 py-2.5 rounded-full transition-colors font-medium ${
+                    activeCategory === "starred" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"
+                  }`}
+                >
+                  <Star size={22} weight={activeCategory === "starred" ? "fill" : "regular"} className="flex-shrink-0" />
+                  <span className="truncate">Starred</span>
+                </button>
+              </div>
+
+              <div>
                 <h3 className="px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 select-none">Categories</h3>
                 <ul className="space-y-1">
                   <NavItem icon={<FileText size={22} />} label="Documents" active={activeCategory === "documents"} onClick={() => setActiveCategory("documents")} isCollapsed={false} />
@@ -376,6 +409,18 @@ export function Sidebar({
                     >
                       <Cloud size={22} weight={activeCategory === "storage" ? "fill" : "regular"} className={`flex-shrink-0 ${activeCategory === "storage" ? "text-primary" : ""}`} />
                       <span className="flex-1 text-left truncate">Storage</span>
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => {
+                        onSettingsClick?.();
+                        setIsMobileOpen?.(false);
+                      }}
+                      className="flex items-center w-full gap-4 px-4 py-2.5 rounded-full transition-colors font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"
+                    >
+                      <Gear size={22} className="flex-shrink-0" />
+                      <span className="flex-1 text-left truncate">Settings</span>
                     </button>
                   </li>
                 </ul>

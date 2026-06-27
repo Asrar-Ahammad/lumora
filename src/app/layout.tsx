@@ -3,6 +3,8 @@ import { Inter, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
 import { CryptoProvider } from "@/components/crypto-provider";
+import { UploadProvider } from "@/components/upload-provider";
+import { BackgroundUploadsWidget } from "@/components/background-uploads-widget";
 import { RecoveryCodeModal } from "@/components/recovery-code-modal";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
@@ -42,11 +44,14 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             <CryptoProvider>
-              <TooltipProvider>
-                {children}
-                <RecoveryCodeModal />
-                <Toaster />
-              </TooltipProvider>
+              <UploadProvider>
+                <TooltipProvider>
+                  {children}
+                  <RecoveryCodeModal />
+                  <BackgroundUploadsWidget />
+                  <Toaster />
+                </TooltipProvider>
+              </UploadProvider>
             </CryptoProvider>
           </ThemeProvider>
         </body>

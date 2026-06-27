@@ -15,7 +15,7 @@ import { UniversalSearchDialog } from "./universal-search-dialog";
 import { 
   FolderPlus, GridNine, List, Info, ShieldCheck, Folder, 
   FileText, Calendar, HardDrive, MagnifyingGlass, CloudArrowUp,
-  Question, CheckCircle, XCircle, X
+  Question, CheckCircle, XCircle, X, Star
 } from "@phosphor-icons/react";
 import { useUser } from "@clerk/nextjs";
 import { useToast } from "@/hooks/use-toast";
@@ -93,6 +93,17 @@ export function DashboardClient() {
   const [globalViewerKey, setGlobalViewerKey] = React.useState<CryptoKey | null>(null);
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(0);
+
+  React.useEffect(() => {
+    const handleUploadComplete = () => {
+      setRefreshTrigger((prev) => prev + 1);
+    };
+    window.addEventListener("lumora-upload-complete", handleUploadComplete);
+    return () => {
+      window.removeEventListener("lumora-upload-complete", handleUploadComplete);
+    };
+  }, []);
+
   const [isUploadOpen, setIsUploadOpen] = React.useState(false);
   const [draggedFiles, setDraggedFiles] = React.useState<File[]>([]);
   const [isDashboardDragging, setIsDashboardDragging] = React.useState(false);
@@ -581,6 +592,31 @@ export function DashboardClient() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
+  if (!isUserLoaded || !isReady || !currentFolderId || !currentFolderKey) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-6 max-w-sm px-6 text-center">
+          {/* Glowing Animated Circular Spinner */}
+          <div className="relative w-16 h-16">
+            <div className="absolute inset-0 rounded-full border-4 border-primary/10" />
+            <div className="absolute inset-0 rounded-full border-4 border-t-primary border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+            {/* Inner pulsing glow circle */}
+            <div className="absolute inset-3 rounded-full bg-primary/5 animate-pulse" />
+          </div>
+          
+          <div className="space-y-2 animate-pulse">
+            <h2 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-primary via-primary/80 to-purple-500 bg-clip-text text-transparent select-none">
+              Lumora
+            </h2>
+            <p className="text-xs text-muted-foreground font-medium">
+              Initializing secure E2EE environment...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div 
       onDragEnter={handleDashboardDragEnter}
@@ -604,6 +640,7 @@ export function DashboardClient() {
         setIsCollapsed={setIsSidebarCollapsed}
         isMobileOpen={isMobileSidebarOpen}
         setIsMobileOpen={setIsMobileSidebarOpen}
+        onSettingsClick={() => setIsSettingsOpen(true)}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar 
@@ -612,6 +649,7 @@ export function DashboardClient() {
           onUploadClick={() => setIsUploadOpen(true)} 
           onSettingsClick={() => setIsSettingsOpen(true)}
           onMenuClick={() => setIsMobileSidebarOpen(true)}
+          onSearchClick={() => setIsSearchDialogOpen(true)}
           decryptedSearchNodes={decryptedSearchNodes}
           decFoldersMap={decFoldersMap}
           loadSearchIndex={loadSearchIndex}
@@ -820,21 +858,30 @@ export function DashboardClient() {
                     <div className="flex items-center justify-between mb-2">
                       <h5 className="text-xs font-semibold text-primary flex items-center gap-1.5">
                         <ShieldCheck size={14} />
-                        Smart AI Description
+                        Smart AI Tags
                       </h5>
                       <div className="relative group">
                         <Question size={14} className="text-muted-foreground hover:text-primary cursor-help transition-colors" />
                         <div className="absolute bottom-full right-0 mb-2 w-48 p-2.5 bg-card text-card-foreground text-[10px] rounded-lg shadow-md border border-border opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200 z-20 font-medium leading-normal text-left">
-                          To generate AI descriptions for new uploads, enable Smart AI Search in settings.
+                          To generate AI tags for new uploads, enable Smart AI Search in settings.
                         </div>
                       </div>
                     </div>
                     {decryptingCaption ? (
-                      <p className="text-[11px] text-muted-foreground animate-pulse">Decrypting description...</p>
+                      <p className="text-[11px] text-muted-foreground animate-pulse">Decrypting tags...</p>
                     ) : decryptedCaption ? (
-                      <p className="text-[11px] text-muted-foreground leading-relaxed italic">{decryptedCaption}</p>
+                      <div className="flex flex-wrap gap-1.5 mt-1 select-none">
+                        {decryptedCaption.split(",").map((tag, idx) => (
+                          <span 
+                            key={idx} 
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20"
+                          >
+                            {tag.trim()}
+                          </span>
+                        ))}
+                      </div>
                     ) : (
-                      <p className="text-[11px] text-muted-foreground leading-relaxed italic">No description available for this file.</p>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed italic">No tags available for this file.</p>
                     )}
                   </div>
                 )}
@@ -913,15 +960,24 @@ export function DashboardClient() {
                       <div className="flex items-center justify-between mb-2">
                         <h5 className="text-xs font-semibold text-primary flex items-center gap-1.5">
                           <ShieldCheck size={14} />
-                          Smart AI Description
+                          Smart AI Tags
                         </h5>
                       </div>
                       {decryptingCaption ? (
-                        <p className="text-[11px] text-muted-foreground animate-pulse">Decrypting description...</p>
+                        <p className="text-[11px] text-muted-foreground animate-pulse">Decrypting tags...</p>
                       ) : decryptedCaption ? (
-                        <p className="text-[11px] text-muted-foreground leading-relaxed italic">{decryptedCaption}</p>
+                        <div className="flex flex-wrap gap-1.5 mt-1 select-none">
+                          {decryptedCaption.split(",").map((tag, idx) => (
+                            <span 
+                              key={idx} 
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20"
+                            >
+                              {tag.trim()}
+                            </span>
+                          ))}
+                        </div>
                       ) : (
-                        <p className="text-[11px] text-muted-foreground leading-relaxed italic">No description available for this file.</p>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed italic">No tags available for this file.</p>
                       )}
                     </div>
                   )}
@@ -1033,6 +1089,47 @@ export function DashboardClient() {
           nodeKey={globalViewerKey}
         />
       )}
+      {/* Floating Mobile Bottom Navigation Bar */}
+      <div className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-background/85 dark:bg-neutral-900/85 border border-border/80 shadow-2xl rounded-full px-4 py-2.5 backdrop-blur-md select-none">
+        <button
+          onClick={() => {
+            setActiveCategory("drive");
+            setSelectedNode(null);
+          }}
+          className={`flex flex-col items-center gap-0.5 px-4 py-1 rounded-2xl transition-colors cursor-pointer ${
+            activeCategory === "drive" 
+              ? "text-primary" 
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <HardDrive size={20} weight={activeCategory === "drive" ? "fill" : "regular"} />
+          <span className="text-[10px] font-semibold">Drive</span>
+        </button>
+
+        {/* Floating Upload button integrated in center of tab bar */}
+        <button
+          onClick={() => setIsUploadOpen(true)}
+          className="p-3 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full shadow-md active:scale-95 transition-transform flex items-center justify-center cursor-pointer mx-1 border border-primary/20"
+          title="Upload file"
+        >
+          <CloudArrowUp size={20} weight="bold" />
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveCategory("starred");
+            setSelectedNode(null);
+          }}
+          className={`flex flex-col items-center gap-0.5 px-4 py-1 rounded-2xl transition-colors cursor-pointer ${
+            activeCategory === "starred" 
+              ? "text-primary" 
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Star size={20} weight={activeCategory === "starred" ? "fill" : "regular"} />
+          <span className="text-[10px] font-semibold">Starred</span>
+        </button>
+      </div>
     </div>
   );
 }

@@ -46,10 +46,12 @@ model Node {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   trashedAt    DateTime? // null = active, set = in trash
+  starred      Boolean  @default(false)
 
   @@index([userId, parentId])
   @@index([userId, type])
   @@index([userId, trashedAt])
+  @@index([userId, starred])
 }
 
 enum NodeType {

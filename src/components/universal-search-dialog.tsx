@@ -25,7 +25,11 @@ import {
   Image as ImageIcon,
   Clock,
   ArrowRight,
-  X
+  X,
+  CaretDown,
+  HardDrive,
+  Cloud,
+  Calendar
 } from "@phosphor-icons/react"
 
 interface UniversalSearchDialogProps {
@@ -70,6 +74,21 @@ export function UniversalSearchDialog({
   const [filterCategory, setFilterCategory] = React.useState<"all" | "doc" | "image" | "video" | "audio">("all")
   const [filterDate, setFilterDate] = React.useState<"all" | "today" | "week" | "month">("all")
   const [filterSize, setFilterSize] = React.useState<"all" | "small" | "medium" | "large">("all")
+  
+  // Popover state
+  const [activeDropdown, setActiveDropdown] = React.useState<"type" | "size" | "category" | "date" | null>(null)
+
+  const isAnyFilterActive = React.useMemo(() => {
+    return filterType !== "all" || filterCategory !== "all" || filterSize !== "all" || filterDate !== "all"
+  }, [filterType, filterCategory, filterSize, filterDate])
+
+  const resetAllFilters = React.useCallback(() => {
+    setFilterType("all")
+    setFilterCategory("all")
+    setFilterSize("all")
+    setFilterDate("all")
+    setActiveDropdown(null)
+  }, [])
   
   // Keyboard Selection index
   const [selectedIdx, setSelectedIdx] = React.useState(0)
@@ -231,7 +250,7 @@ export function UniversalSearchDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden bg-background/95 dark:bg-neutral-950/95 border border-border shadow-2xl backdrop-blur-md rounded-xl">
+      <DialogContent className="w-[95vw] sm:max-w-2xl p-0 overflow-hidden bg-background/95 dark:bg-neutral-950/95 border border-border shadow-2xl backdrop-blur-md rounded-xl max-h-[85vh] flex flex-col [&>button]:hidden">
         <DialogHeader className="sr-only">
           <DialogTitle>Universal Search</DialogTitle>
         </DialogHeader>
@@ -263,133 +282,253 @@ export function UniversalSearchDialog({
           </div>
         </div>
 
+        {/* Click-outside transparent overlay */}
+        {activeDropdown && (
+          <div className="fixed inset-0 z-20 bg-transparent" onClick={() => setActiveDropdown(null)} />
+        )}
+
         {/* Filter bar */}
-        <div className="flex flex-col gap-2 p-3 bg-muted/20 border-b border-border/60">
-          <div className="flex items-center gap-2 flex-wrap text-xs">
-            {/* Filter: Type */}
-            <span className="text-muted-foreground font-medium pr-1">Type:</span>
+        <div className="relative flex flex-col gap-2 p-3 bg-muted/15 border-b border-border/60 overflow-visible w-full select-none z-30">
+          <div 
+            className="flex items-center gap-2 flex-nowrap overflow-x-auto [&::-webkit-scrollbar]:hidden py-0.5 text-xs select-none w-full scroll-smooth"
+            style={{ scrollbarWidth: "none" }}
+          >
+            {/* Filter Pill: Type */}
             <button
-              onClick={() => setFilterType("all")}
-              className={`px-2 py-0.5 rounded-full border transition-colors ${filterType === "all" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
+              onClick={() => setActiveDropdown(activeDropdown === "type" ? null : "type")}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-full border transition-all cursor-pointer shrink-0 ${
+                filterType !== "all" 
+                  ? "bg-primary/10 border-primary/30 text-primary font-semibold" 
+                  : "border-border hover:bg-muted text-muted-foreground hover:text-foreground"
+              }`}
             >
-              All
-            </button>
-            <button
-              onClick={() => setFilterType("file")}
-              className={`px-2 py-0.5 rounded-full border transition-colors ${filterType === "file" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-            >
-              Files
-            </button>
-            <button
-              onClick={() => setFilterType("folder")}
-              className={`px-2 py-0.5 rounded-full border transition-colors ${filterType === "folder" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-            >
-              Folders
+              <HardDrive size={13} weight={filterType !== "all" ? "fill" : "regular"} />
+              <span>
+                Type: {filterType === "all" ? "All" : filterType === "file" ? "Files" : "Folders"}
+              </span>
+              <CaretDown size={12} className={`transition-transform duration-200 ${activeDropdown === "type" ? "rotate-180" : ""}`} />
             </button>
 
-            {/* Filter: Size */}
+            {/* Filter Pill: Category (Only if not Folder) */}
             {filterType !== "folder" && (
-              <>
-                <div className="h-3 w-px bg-border/80 mx-1" />
-                <span className="text-muted-foreground font-medium pr-1">Size:</span>
-                <button
-                  onClick={() => setFilterSize("all")}
-                  className={`px-2 py-0.5 rounded-full border transition-colors ${filterSize === "all" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
+              <button
+                onClick={() => setActiveDropdown(activeDropdown === "category" ? null : "category")}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-full border transition-all cursor-pointer shrink-0 ${
+                  filterCategory !== "all" 
+                    ? "bg-primary/10 border-primary/30 text-primary font-semibold" 
+                    : "border-border hover:bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <FileText size={13} weight={filterCategory !== "all" ? "fill" : "regular"} />
+                <span>
+                  Category: {filterCategory === "all" ? "All" : filterCategory === "doc" ? "Docs" : filterCategory === "image" ? "Images" : filterCategory === "video" ? "Videos" : "Audio"}
+                </span>
+                {filterCategory !== "all" ? (
+                  <span 
+                    onClick={(e) => { e.stopPropagation(); setFilterCategory("all"); }}
+                    className="p-0.5 hover:bg-primary/20 rounded-full cursor-pointer ml-1 text-primary shrink-0"
+                  >
+                    <X size={10} weight="bold" />
+                  </span>
+                ) : (
+                  <CaretDown size={12} className={`transition-transform duration-200 ${activeDropdown === "category" ? "rotate-180" : ""}`} />
+                )}
+              </button>
+            )}
+
+            {/* Filter Pill: Size (Only if not Folder) */}
+            {filterType !== "folder" && (
+              <button
+                onClick={() => setActiveDropdown(activeDropdown === "size" ? null : "size")}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-full border transition-all cursor-pointer shrink-0 ${
+                  filterSize !== "all" 
+                    ? "bg-primary/10 border-primary/30 text-primary font-semibold" 
+                    : "border-border hover:bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Cloud size={13} weight={filterSize !== "all" ? "fill" : "regular"} />
+                <span>
+                  Size: {filterSize === "all" ? "Any" : filterSize === "small" ? "< 10MB" : filterSize === "medium" ? "10-100MB" : "> 100MB"}
+                </span>
+                {filterSize !== "all" ? (
+                  <span 
+                    onClick={(e) => { e.stopPropagation(); setFilterSize("all"); }}
+                    className="p-0.5 hover:bg-primary/20 rounded-full cursor-pointer ml-1 text-primary shrink-0"
+                  >
+                    <X size={10} weight="bold" />
+                  </span>
+                ) : (
+                  <CaretDown size={12} className={`transition-transform duration-200 ${activeDropdown === "size" ? "rotate-180" : ""}`} />
+                )}
+              </button>
+            )}
+
+            {/* Filter Pill: Created Date */}
+            <button
+              onClick={() => setActiveDropdown(activeDropdown === "date" ? null : "date")}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-full border transition-all cursor-pointer shrink-0 ${
+                filterDate !== "all" 
+                  ? "bg-primary/10 border-primary/30 text-primary font-semibold" 
+                  : "border-border hover:bg-muted text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Calendar size={13} weight={filterDate !== "all" ? "fill" : "regular"} />
+              <span>
+                Created: {filterDate === "all" ? "Any Time" : filterDate === "today" ? "Today" : filterDate === "week" ? "Past Week" : "Past Month"}
+              </span>
+              {filterDate !== "all" ? (
+                <span 
+                  onClick={(e) => { e.stopPropagation(); setFilterDate("all"); }}
+                  className="p-0.5 hover:bg-primary/20 rounded-full cursor-pointer ml-1 text-primary shrink-0"
                 >
-                  Any Size
-                </button>
-                <button
-                  onClick={() => setFilterSize("small")}
-                  className={`px-2 py-0.5 rounded-full border transition-colors ${filterSize === "small" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
-                  &lt; 10MB
-                </button>
-                <button
-                  onClick={() => setFilterSize("medium")}
-                  className={`px-2 py-0.5 rounded-full border transition-colors ${filterSize === "medium" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
-                  10MB - 100MB
-                </button>
-                <button
-                  onClick={() => setFilterSize("large")}
-                  className={`px-2 py-0.5 rounded-full border transition-colors ${filterSize === "large" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
-                  &gt; 100MB
-                </button>
-              </>
+                  <X size={10} weight="bold" />
+                </span>
+              ) : (
+                <CaretDown size={12} className={`transition-transform duration-200 ${activeDropdown === "date" ? "rotate-180" : ""}`} />
+              )}
+            </button>
+
+            {/* Clear All active filters */}
+            {isAnyFilterActive && (
+              <button
+                onClick={resetAllFilters}
+                className="text-xs font-semibold text-destructive hover:text-destructive/80 transition-colors ml-auto shrink-0 cursor-pointer pr-1"
+              >
+                Clear filters
+              </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap text-xs">
-            {/* Filter: Category (only when Files or All) */}
-            {filterType !== "folder" && (
-              <>
-                <span className="text-muted-foreground font-medium pr-1">Category:</span>
-                <button
-                  onClick={() => setFilterCategory("all")}
-                  className={`px-2 py-0.5 rounded-full border transition-colors ${filterCategory === "all" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
-                  All
-                </button>
-                <button
-                  onClick={() => setFilterCategory("doc")}
-                  className={`px-2 py-0.5 rounded-full border transition-colors ${filterCategory === "doc" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
-                  Docs
-                </button>
-                <button
-                  onClick={() => setFilterCategory("image")}
-                  className={`px-2 py-0.5 rounded-full border transition-colors ${filterCategory === "image" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
-                  Images
-                </button>
-                <button
-                  onClick={() => setFilterCategory("video")}
-                  className={`px-2 py-0.5 rounded-full border transition-colors ${filterCategory === "video" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
-                  Videos
-                </button>
-                <button
-                  onClick={() => setFilterCategory("audio")}
-                  className={`px-2 py-0.5 rounded-full border transition-colors ${filterCategory === "audio" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
-                  Audio
-                </button>
-              </>
-            )}
+          {/* Active Dropdown Popover (rendered outside the scrollable container to prevent horizontal clipping) */}
+          {activeDropdown && (
+            <div 
+              className={`absolute top-[calc(100%-2px)] bg-popover text-popover-foreground border border-border shadow-2xl rounded-xl py-1.5 z-[100] min-w-[140px] animate-in fade-in-50 slide-in-from-top-1 duration-150 ${
+                activeDropdown === "type" ? "left-3" :
+                activeDropdown === "category" ? "left-12 sm:left-24" :
+                activeDropdown === "size" ? "left-24 sm:left-48" : "right-3 sm:right-auto sm:left-72"
+              }`}
+            >
+              {activeDropdown === "type" && (
+                <>
+                  <button 
+                    onClick={() => { setFilterType("all"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterType === "all" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    All
+                  </button>
+                  <button 
+                    onClick={() => { setFilterType("file"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterType === "file" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    Files
+                  </button>
+                  <button 
+                    onClick={() => { setFilterType("folder"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterType === "folder" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    Folders
+                  </button>
+                </>
+              )}
 
-            {/* Filter: Created Date */}
-            <div className="h-3 w-px bg-border/80 mx-1" />
-            <span className="text-muted-foreground font-medium pr-1">Created:</span>
-            <button
-              onClick={() => setFilterDate("all")}
-              className={`px-2 py-0.5 rounded-full border transition-colors ${filterDate === "all" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-            >
-              Any Time
-            </button>
-            <button
-              onClick={() => setFilterDate("today")}
-              className={`px-2 py-0.5 rounded-full border transition-colors ${filterDate === "today" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-            >
-              Today
-            </button>
-            <button
-              onClick={() => setFilterDate("week")}
-              className={`px-2 py-0.5 rounded-full border transition-colors ${filterDate === "week" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-            >
-              Past Week
-            </button>
-            <button
-              onClick={() => setFilterDate("month")}
-              className={`px-2 py-0.5 rounded-full border transition-colors ${filterDate === "month" ? "bg-primary border-primary text-primary-foreground font-semibold" : "border-border hover:bg-muted text-muted-foreground"}`}
-            >
-              Past Month
-            </button>
-          </div>
+              {activeDropdown === "category" && (
+                <>
+                  <button 
+                    onClick={() => { setFilterCategory("all"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterCategory === "all" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    All
+                  </button>
+                  <button 
+                    onClick={() => { setFilterCategory("doc"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterCategory === "doc" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    Docs
+                  </button>
+                  <button 
+                    onClick={() => { setFilterCategory("image"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterCategory === "image" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    Images
+                  </button>
+                  <button 
+                    onClick={() => { setFilterCategory("video"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterCategory === "video" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    Videos
+                  </button>
+                  <button 
+                    onClick={() => { setFilterCategory("audio"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterCategory === "audio" ? "text-primary bg-primary/5" : ""}`}
+                  >
+                    Audio
+                  </button>
+                </>
+              )}
+
+              {activeDropdown === "size" && (
+                <>
+                  <button 
+                    onClick={() => { setFilterSize("all"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterSize === "all" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    Any Size
+                  </button>
+                  <button 
+                    onClick={() => { setFilterSize("small"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterSize === "small" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    &lt; 10MB
+                  </button>
+                  <button 
+                    onClick={() => { setFilterSize("medium"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterSize === "medium" ? "text-primary bg-primary/5" : ""}`}
+                  >
+                    10MB - 100MB
+                  </button>
+                  <button 
+                    onClick={() => { setFilterSize("large"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterSize === "large" ? "text-primary bg-primary/5" : ""}`}
+                  >
+                    &gt; 100MB
+                  </button>
+                </>
+              )}
+
+              {activeDropdown === "date" && (
+                <>
+                  <button 
+                    onClick={() => { setFilterDate("all"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterDate === "all" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    Any Time
+                  </button>
+                  <button 
+                    onClick={() => { setFilterDate("today"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterDate === "today" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    Today
+                  </button>
+                  <button 
+                    onClick={() => { setFilterDate("week"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterDate === "week" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    Past Week
+                  </button>
+                  <button 
+                    onClick={() => { setFilterDate("month"); setActiveDropdown(null); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted font-medium transition-colors cursor-pointer ${filterDate === "month" ? "text-primary bg-primary/5 font-semibold" : ""}`}
+                  >
+                    Past Month
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Results Container */}
-        <div className="max-h-[380px] min-h-[180px] overflow-y-auto p-2" onKeyDown={handleKeyDown}>
+        <div className="flex-1 max-h-[45vh] md:max-h-[380px] min-h-[180px] overflow-y-auto p-2" onKeyDown={handleKeyDown}>
           {indexing ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -453,7 +592,7 @@ export function UniversalSearchDialog({
         </div>
 
         {/* Footer shortcuts */}
-        <div className="flex items-center justify-between px-4 py-2 border-t border-border bg-muted/30 text-[11px] text-muted-foreground select-none">
+        <div className="hidden sm:flex items-center justify-between px-4 py-2 border-t border-border bg-muted/30 text-[11px] text-muted-foreground select-none">
           <div className="flex items-center gap-3">
             <span>
               <kbd className="rounded border bg-background px-1 py-0.5 font-mono">↑↓</kbd> to navigate

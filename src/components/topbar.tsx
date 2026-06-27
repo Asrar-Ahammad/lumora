@@ -28,6 +28,7 @@ interface TopbarProps {
   onUploadClick: () => void;
   onSettingsClick: () => void;
   onMenuClick?: () => void;
+  onSearchClick?: () => void;
   decryptedSearchNodes?: any[];
   decFoldersMap?: Map<string, any>;
   loadSearchIndex?: () => void;
@@ -42,6 +43,7 @@ export function Topbar({
   onUploadClick,
   onSettingsClick,
   onMenuClick,
+  onSearchClick,
   decryptedSearchNodes = [],
   decFoldersMap = new Map(),
   loadSearchIndex,
@@ -237,7 +239,17 @@ export function Topbar({
             <ListIcon size={22} />
           </button>
         )}
-        <div ref={searchContainerRef} className="relative flex items-center w-full group">
+        {/* Mobile search icon (only visible on mobile, triggers Universal Search dialog) */}
+        {onSearchClick && (
+          <button
+            onClick={onSearchClick}
+            className="md:hidden p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+            title="Search files"
+          >
+            <MagnifyingGlassIcon size={22} />
+          </button>
+        )}
+        <div ref={searchContainerRef} className="hidden md:flex relative items-center w-full group">
           <div className="absolute left-4 text-muted-foreground group-focus-within:text-primary transition-colors">
             <MagnifyingGlassIcon size={20} />
           </div>
@@ -318,7 +330,7 @@ export function Topbar({
       <div className="flex items-center gap-1.5 md:gap-4 ml-2 md:ml-4 text-muted-foreground shrink-0">
         <button
           onClick={onUploadClick}
-          className="p-2.5 bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 rounded-full transition-colors flex items-center gap-2 cursor-pointer"
+          className="hidden md:flex p-2.5 bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 rounded-full transition-colors items-center gap-2 cursor-pointer"
           title="Upload media"
         >
           <UploadIcon size={18} weight="bold" />

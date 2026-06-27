@@ -65,13 +65,27 @@ def process_queue():
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Describe this image in extreme detail for semantic search."},
+                        {"type": "text", "text": "Generate exactly five descriptive single-word tags or short keywords for this image, separated by commas. Do not write full sentences or descriptions."},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}},
                     ],
                 }
             ],
         )
-        description = response.choices[0].message.content
+        description_raw = response.choices[0].message.content or ""
+        
+        # Clean and limit to exactly 5 tags
+        import re
+        cleaned = re.sub(r'^(tags|keywords|labels|list):', '', description_raw, flags=re.IGNORECASE).strip()
+        if '\n' in cleaned:
+            tags = [re.sub(r'^[-*•\d\.\s]+', '', line).strip() for line in cleaned.split('\n') if line.strip()]
+        elif ',' in cleaned:
+            tags = [t.strip() for t in cleaned.split(',') if t.strip()]
+        else:
+            tags = [t.strip() for t in cleaned.split() if t.strip()]
+        
+        tags = [re.sub(r'[^\w\s-]', '', t).strip() for t in tags if t.strip()]
+        tags = [t for t in tags if t]
+        description = ", ".join(tags[:5])
         
         # Generate embedding
         embed_resp = client.embeddings.create(

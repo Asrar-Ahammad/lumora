@@ -12,7 +12,7 @@ import {
   FileText, Info, Download, Trash, Eye, CaretRight, ShieldCheck,
   CheckCircle, XCircle, FolderOpen, ArrowSquareOut, Copy, UploadSimple,
   FolderPlus, Warning, PencilSimple, DotsThreeVertical, Check, X,
-  ArrowUp, ArrowDown, User, Play, Image as ImageIcon, FileDoc, FileXls, FilePpt, FileZip
+  ArrowUp, ArrowDown, User, Play, Image as ImageIcon, FileDoc, FileXls, FilePpt, FileZip, Star
 } from "@phosphor-icons/react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -66,6 +66,7 @@ type NodeData = {
   captionIV: string | null;
   createdAt: string;
   url: string | null;
+  starred: boolean;
 };
 
 type DecryptedNodeData = NodeData & {
@@ -133,6 +134,59 @@ export function MediaGallery({
   const deleteNode = React.useMemo(() => {
     return decryptedItems.find((item) => item.id === deleteNodeId) || null;
   }, [deleteNodeId, decryptedItems]);
+
+  const handleToggleStar = async (item: DecryptedNodeData) => {
+    const originalStarred = item.starred;
+    const nextStarred = !originalStarred;
+
+    // Optimistic UI update
+    setDecryptedItems((prev) =>
+      prev.map((x) => (x.id === item.id ? { ...x, starred: nextStarred } : x))
+    );
+
+    // Update in-memory decryption cache in place to prevent UI re-fetching/refreshing
+    const cacheKey = `${currentFolderId || "root"}-${activeCategory}-${debouncedQuery}`;
+    const cached = decryptedCache.current.get(cacheKey);
+    if (cached) {
+      cached.decNodes = cached.decNodes.map((x) =>
+        x.id === item.id ? { ...x, starred: nextStarred } : x
+      );
+    }
+
+    try {
+      const res = await fetch(`/api/nodes?id=${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ starred: nextStarred }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to update starring state");
+      }
+
+      toast({
+        title: nextStarred ? "Added to Starred" : "Removed from Starred",
+        description: `Successfully updated ${item.name}`,
+      });
+    } catch (err) {
+      console.error(err);
+      // Revert cache on error
+      if (cached) {
+        cached.decNodes = cached.decNodes.map((x) =>
+          x.id === item.id ? { ...x, starred: originalStarred } : x
+        );
+      }
+      // Revert UI on error
+      setDecryptedItems((prev) =>
+        prev.map((x) => (x.id === item.id ? { ...x, starred: originalStarred } : x))
+      );
+      toast({
+        title: "Error",
+        description: "Could not update star. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Load and decrypt folders when opening the picker
   React.useEffect(() => {
@@ -655,6 +709,24 @@ export function MediaGallery({
     }
   };
 
+  // Debounce the semantic search query to prevent rapid API calls while typing
+  const [debouncedQuery, setDebouncedQuery] = React.useState(query);
+
+  React.useEffect(() => {
+    if (!query.trim()) {
+      setDebouncedQuery("");
+      return;
+    }
+
+    const handler = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 400);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [query]);
+
   // Track previous refreshTrigger to detect changes
   const prevRefreshTrigger = React.useRef(refreshTrigger);
   const hasMounted = React.useRef(false);
@@ -672,7 +744,7 @@ export function MediaGallery({
     let active = true;
 
     async function fetchAndDecryptNodes() {
-      const cacheKey = `${currentFolderId || "root"}-${activeCategory}-${query}`;
+      const cacheKey = `${currentFolderId || "root"}-${activeCategory}-${debouncedQuery}`;
       const cached = decryptedCache.current.get(cacheKey);
 
       // Only serve from cache if we've mounted before (not first load)
@@ -688,8 +760,8 @@ export function MediaGallery({
 
       try {
         let endpoint = `/api/nodes?parentId=${currentFolderId || ""}`;
-        if (query.trim()) {
-          endpoint = `/api/search?q=${encodeURIComponent(query)}`;
+        if (debouncedQuery.trim()) {
+          endpoint = `/api/search?q=${encodeURIComponent(debouncedQuery)}`;
         } else if (activeCategory !== "drive") {
           endpoint = `/api/nodes?category=${activeCategory}`;
         }
@@ -787,13 +859,21 @@ export function MediaGallery({
     return () => {
       active = false;
     };
-  }, [currentFolderId, query, activeCategory, refreshTrigger, isReady, decryptNodeKeyCascade]);
+  }, [currentFolderId, debouncedQuery, activeCategory, refreshTrigger, isReady, decryptNodeKeyCascade]);
+
+  // Filter out unstarred items in Starred category without full refetch
+  const displayItems = React.useMemo(() => {
+    if (activeCategory === "starred") {
+      return decryptedItems.filter(item => item.starred);
+    }
+    return decryptedItems;
+  }, [decryptedItems, activeCategory]);
 
   // 3. Client-side local query filtering
   return (
     <>
       <MediaGalleryContent
-        decryptedItems={decryptedItems}
+        decryptedItems={displayItems}
         loading={loading}
         viewMode={viewMode}
         activeCategory={activeCategory}
@@ -818,6 +898,7 @@ export function MediaGallery({
         setRenameNodeId={setRenameNodeId}
         onRenameSubmit={handleRenameSubmit}
         onDownloadNode={handleDownloadNode}
+        toggleStar={handleToggleStar}
       />
       {pickerOpen && (
         <DestinationPickerModal
@@ -1015,7 +1096,7 @@ function MediaGalleryContent({
   decryptedItems, loading, viewMode, activeCategory, onNavigate, onSelectNode, onCloseInfoPanel, selectedNodeId, onDelete, onOpenViewer,
   viewerNode, viewerKey, setViewerNode, setViewerKey, localQuery,
   onTriggerUpload, onTriggerCreateFolder, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly,
-  renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode
+  renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar
 }: any) {
   const [sortKey, setSortKey] = React.useState<"name" | "size" | "createdAt">("name");
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc");
@@ -1113,6 +1194,9 @@ function MediaGalleryContent({
             setRenameNodeId={setRenameNodeId}
             onRenameSubmit={onRenameSubmit}
             onDownloadNode={onDownloadNode}
+            toggleStar={toggleStar}
+            dropdownOpenId={dropdownOpenId}
+            setDropdownOpenId={setDropdownOpenId}
           />
         ))}
       </div>
@@ -1188,6 +1272,7 @@ function MediaGalleryContent({
                 dropdownOpenId={dropdownOpenId}
                 setDropdownOpenId={setDropdownOpenId}
                 onDownloadNode={onDownloadNode}
+                toggleStar={toggleStar}
               />
             ))}
           </tbody>
@@ -1390,8 +1475,9 @@ const getExtension = (name: string, type: string) => {
 };
 
 // GRID ITEM SUBCOMPONENT (Now takes pre-decrypted properties)
-function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode }: any) {
+function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar, dropdownOpenId, setDropdownOpenId }: any) {
   const isSelected = item.id === selectedNodeId;
+  const [dropdownPosition, setDropdownPosition] = React.useState<{ top: number; left: number } | null>(null);
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [tempName, setTempName] = React.useState(getBaseName(item.name, item.type));
   const isSubmitting = React.useRef(false);
@@ -1739,36 +1825,151 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
                 />
               </div>
             ) : (
-              <h4 className="text-xs font-semibold text-foreground truncate select-none" title={item.name}>
+              <h4 className="text-xs font-semibold text-foreground truncate select-none flex items-center gap-1" title={item.name}>
                 {item.name}
+                {item.starred && (
+                  <Star size={12} weight="fill" className="text-yellow-500 shrink-0 ml-0.5" />
+                )}
               </h4>
             )}
           </div>
 
-          <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity flex-shrink-0">
-            {item.type === "FILE" && item.nodeKey && item.fileIv && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onOpenViewer(item, item.nodeKey, item.name, item.fileIv); }}
-                className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground cursor-pointer"
-                title="Quick view"
+          <div className="relative inline-block text-left" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                setDropdownOpenId(dropdownOpenId === item.id ? null : item.id);
+
+                const hasPreview = item.type === "FILE" && item.nodeKey && item.fileIv;
+                const itemsCount = item.type === "FOLDER" ? 6 : (hasPreview ? 7 : 6);
+                const menuHeight = itemsCount * 32 + 14;
+
+                const shouldOpenUpward = window.innerHeight - rect.bottom < menuHeight;
+                const topPos = shouldOpenUpward
+                  ? rect.top - menuHeight + window.scrollY
+                  : rect.bottom + window.scrollY;
+
+                const leftPos = Math.max(
+                  8,
+                  Math.min(
+                    rect.right - 176 + window.scrollX,
+                    window.innerWidth - 176 - 8 + window.scrollX
+                  )
+                );
+
+                setDropdownPosition({
+                  top: topPos,
+                  left: leftPos,
+                });
+              }}
+              className={`p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer ${
+                dropdownOpenId === item.id ? "opacity-100 bg-muted/50" : "opacity-100 md:opacity-0 md:group-hover:opacity-100"
+              }`}
+              title="More actions"
+            >
+              <DotsThreeVertical size={18} weight="bold" />
+            </button>
+
+            {dropdownOpenId === item.id && dropdownPosition && createPortal(
+              <div
+                style={{
+                  position: "absolute",
+                  top: `${dropdownPosition.top}px`,
+                  left: `${dropdownPosition.left}px`,
+                }}
+                className="w-44 rounded-xl border border-border bg-popover shadow-lg py-1.5 z-[9999] text-left text-xs animate-in fade-in-50 duration-100 select-none"
+                onClick={(e) => e.stopPropagation()}
               >
-                <Eye size={14} />
-              </button>
+                {item.type === "FOLDER" ? (
+                  <button
+                    onClick={() => {
+                      setDropdownOpenId(null);
+                      onNavigate(item.id, item.name, item.nodeKey);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                  >
+                    <FolderOpen size={15} />
+                    <span>Open</span>
+                  </button>
+                ) : (
+                  item.nodeKey && item.fileIv && (
+                    <button
+                      onClick={() => {
+                        setDropdownOpenId(null);
+                        onOpenViewer(item, item.nodeKey!, item.name, item.fileIv!);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                    >
+                      <Eye size={15} />
+                      <span>Quick View</span>
+                    </button>
+                  )
+                )}
+                <button
+                  onClick={() => {
+                    setDropdownOpenId(null);
+                    toggleStar(item);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                >
+                  <Star size={15} weight={item.starred ? "fill" : "regular"} className={item.starred ? "text-yellow-500" : ""} />
+                  <span>{item.starred ? "Remove Star" : "Add to Starred"}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setDropdownOpenId(null);
+                    onSelect(item, true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                >
+                  <Info size={15} />
+                  <span>Item Details</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setDropdownOpenId(null);
+                    onMoveTo(item);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                >
+                  <ArrowSquareOut size={15} />
+                  <span>Move to...</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setDropdownOpenId(null);
+                    onCopyTo(item);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                >
+                  <Copy size={15} />
+                  <span>Copy to...</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setDropdownOpenId(null);
+                    onRename(item);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                >
+                  <PencilSimple size={15} />
+                  <span>Rename</span>
+                </button>
+                <div className="h-px bg-border my-1" />
+                <button
+                  onClick={(e) => {
+                    setDropdownOpenId(null);
+                    onDelete(item.id, e);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-destructive hover:bg-destructive/10 font-medium text-left cursor-pointer"
+                >
+                  <Trash size={15} />
+                  <span>Move to Trash</span>
+                </button>
+              </div>,
+              document.body
             )}
-            <button
-              onClick={(e) => { e.stopPropagation(); onSelect(item, true); }}
-              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground cursor-pointer"
-              title="View details"
-            >
-              <Info size={14} />
-            </button>
-            <button
-              onClick={(e) => onDelete(item.id, e)}
-              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-destructive cursor-pointer"
-              title="Move to Trash"
-            >
-              <Trash size={14} />
-            </button>
           </div>
         </div>
 
@@ -1780,6 +1981,14 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
       </ContextMenuTrigger>
 
       <ContextMenuContent className="w-48 bg-card/85 backdrop-blur-md border border-border/80 shadow-lg rounded-xl p-1.5 animate-in fade-in-50 duration-100 select-none">
+        <ContextMenuItem
+          onClick={() => toggleStar(item)}
+          className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
+        >
+          <Star size={16} weight={item.starred ? "fill" : "regular"} className={item.starred ? "text-yellow-500" : ""} />
+          <span>{item.starred ? "Remove Star" : "Add to Starred"}</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator className="-mx-1.5 my-1 h-px bg-border/50" />
         <ContextMenuItem
           onClick={handleOpen}
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
@@ -1837,7 +2046,7 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 }
 
 // LIST ITEM SUBCOMPONENT (Now takes pre-decrypted properties)
-function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, dropdownOpenId, setDropdownOpenId, onDownloadNode }: any) {
+function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, dropdownOpenId, setDropdownOpenId, onDownloadNode, toggleStar }: any) {
   const isSelected = item.id === selectedNodeId;
   const [dropdownPosition, setDropdownPosition] = React.useState<{ top: number; left: number } | null>(null);
   const [isDragOver, setIsDragOver] = React.useState(false);
@@ -2024,8 +2233,11 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
               )}
             </div>
           ) : (
-            <span className="text-sm font-medium text-foreground truncate flex-1 min-w-0 select-none" title={item.name}>
+            <span className="text-sm font-medium text-foreground truncate flex-1 min-w-0 select-none flex items-center gap-1" title={item.name}>
               {item.name}
+              {item.starred && (
+                <Star size={13} weight="fill" className="text-yellow-500 shrink-0 ml-0.5" />
+              )}
             </span>
           )}
         </div>
@@ -2085,9 +2297,17 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
                 ? rect.top - menuHeight + window.scrollY
                 : rect.bottom + window.scrollY;
 
+              const leftPos = Math.max(
+                8,
+                Math.min(
+                  rect.right - 176 + window.scrollX,
+                  window.innerWidth - 176 - 8 + window.scrollX
+                )
+              );
+
               setDropdownPosition({
                 top: topPos,
-                left: rect.right - 176 + window.scrollX,
+                left: leftPos,
               });
             }}
             className={`p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer ${dropdownOpenId === item.id ? "opacity-100" : "opacity-100 md:opacity-0 md:group-hover:opacity-100"
@@ -2132,6 +2352,16 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
                   </button>
                 )
               )}
+              <button
+                onClick={() => {
+                  setDropdownOpenId(null);
+                  toggleStar(item);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+              >
+                <Star size={15} weight={item.starred ? "fill" : "regular"} className={item.starred ? "text-yellow-500" : ""} />
+                <span>{item.starred ? "Remove Star" : "Add to Starred"}</span>
+              </button>
               <button
                 onClick={() => {
                   setDropdownOpenId(null);
@@ -2206,6 +2436,14 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
       <ContextMenuTrigger render={rowContent} />
 
       <ContextMenuContent className="w-48 bg-card/85 backdrop-blur-md border border-border/80 shadow-lg rounded-xl p-1.5 animate-in fade-in-50 duration-100 select-none">
+        <ContextMenuItem
+          onClick={() => toggleStar(item)}
+          className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
+        >
+          <Star size={16} weight={item.starred ? "fill" : "regular"} className={item.starred ? "text-yellow-500" : ""} />
+          <span>{item.starred ? "Remove Star" : "Add to Starred"}</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator className="-mx-1.5 my-1 h-px bg-border/50" />
         <ContextMenuItem
           onClick={handleOpen}
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
