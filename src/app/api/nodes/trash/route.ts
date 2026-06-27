@@ -79,7 +79,7 @@ export async function GET(req: Request) {
     // Fetch all folders (including trashed ones) for key cascade decryption
     const folders = await getTrashFolders(userId);
 
-    const serialized = trashedNodes.map((n) => ({
+    const serialized = trashedNodes.map((n: any) => ({
       ...n,
       sizeBytes: n.sizeBytes ? n.sizeBytes.toString() : null,
       trashedAt: n.trashedAt ? n.trashedAt.toISOString() : null,
@@ -88,7 +88,7 @@ export async function GET(req: Request) {
         : null,
     }));
 
-    const serializedFolders = folders.map((f) => ({
+    const serializedFolders = folders.map((f: any) => ({
       ...f,
       sizeBytes: f.sizeBytes ? f.sizeBytes.toString() : null,
     }));
