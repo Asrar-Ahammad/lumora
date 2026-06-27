@@ -7,12 +7,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { decryptText, encryptNodeKey, encryptText, decryptFile } from "@/lib/crypto"
 import { FileViewer } from "./file-viewer"
 import JSZip from "jszip"
-import { 
-  Folder, File, FilePdf, FileAudio, FileVideo, FileCode, 
+import {
+  Folder, File, FilePdf, FileAudio, FileVideo, FileCode,
   FileText, Info, Download, Trash, Eye, CaretRight, ShieldCheck,
   CheckCircle, XCircle, FolderOpen, ArrowSquareOut, Copy, UploadSimple,
   FolderPlus, Warning, PencilSimple, DotsThreeVertical, Check, X,
-  ArrowUp, ArrowDown
+  ArrowUp, ArrowDown, User, Play, Image as ImageIcon, FileDoc, FileXls, FilePpt, FileZip
 } from "@phosphor-icons/react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -33,6 +33,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import dynamic from "next/dynamic"
+
+const PdfThumbnail = dynamic(() => import("./pdf-thumbnail"), {
+  ssr: false, loading: () => (
+    <div className="w-full h-full flex items-center justify-center">
+      <span className="w-3 h-3 border-2 border-primary/40 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+});
+
+const DocThumbnail = dynamic(() => import("./doc-thumbnail"), {
+  ssr: false, loading: () => (
+    <div className="w-full h-full flex items-center justify-center">
+      <span className="w-3 h-3 border-2 border-primary/40 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+});
 
 type NodeData = {
   id: string;
@@ -55,6 +72,8 @@ type DecryptedNodeData = NodeData & {
   name: string;
   fileIv: string | null;
   nodeKey: CryptoKey | null;
+  lastModified?: string | null;
+  locationPath?: any[];
 };
 
 interface MediaGalleryProps {
@@ -73,12 +92,12 @@ interface MediaGalleryProps {
   onTriggerCreateFolder?: () => void;
 }
 
-export function MediaGallery({ 
-  query, 
+export function MediaGallery({
+  query,
   localQuery,
-  currentFolderId, 
-  onNavigate, 
-  viewMode, 
+  currentFolderId,
+  onNavigate,
+  viewMode,
   activeCategory,
   onSelectNode,
   onCloseInfoPanel,
@@ -145,10 +164,10 @@ export function MediaGallery({
     const res = await fetch(`/api/nodes?parentId=${originalFolderId}`);
     if (!res.ok) throw new Error("Failed to fetch folder children");
     const { nodes, folders } = await res.json();
-    
+
     const ancestorMap = new Map();
     folders.forEach((f: any) => ancestorMap.set(f.id, f));
-    
+
     for (const child of nodes) {
       const childKey = await decryptNodeKeyCascade(child, ancestorMap);
       const decName = await decryptText(child.nameEnc, childKey, child.nameIV);
@@ -157,12 +176,12 @@ export function MediaGallery({
         try {
           const parsed = JSON.parse(decName);
           name = parsed.name || parsed.filename;
-        } catch {}
+        } catch { }
       }
-      
+
       const { encryptedKey: childKeyEnc, iv: childKeyIV } = await encryptNodeKey(childKey, copiedFolderKey);
       const { cipherText: childNameEnc, iv: childNameIV } = await encryptText(name, childKey);
-      
+
       const copyRes = await fetch("/api/nodes/copy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -175,14 +194,14 @@ export function MediaGallery({
           nameIV: childNameIV,
         }),
       });
-      
+
       if (!copyRes.ok) {
         throw new Error("Failed to copy child node");
       }
-      
+
       const copyData = await copyRes.json();
       const newChildNode = copyData.node;
-      
+
       if (child.type === "FOLDER") {
         await copyDescendants(child.id, newChildNode.id, childKey);
       }
@@ -354,18 +373,18 @@ export function MediaGallery({
         title: "Downloading file...",
         description: "Decrypting file contents in browser...",
       });
-      
+
       try {
         if (!node.nodeKey || !node.fileIv) {
           throw new Error("Missing file decryption key metadata");
         }
-        
+
         const res = await fetch(node.url);
         if (!res.ok) throw new Error("Failed to download file from server");
-        
+
         const encryptedBuffer = await res.arrayBuffer();
         const decryptedBlob = await decryptFile(encryptedBuffer, node.nodeKey, node.fileIv);
-        
+
         const blobUrl = URL.createObjectURL(decryptedBlob);
         const a = document.createElement("a");
         a.href = blobUrl;
@@ -374,7 +393,7 @@ export function MediaGallery({
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(blobUrl);
-        
+
         toast({
           title: (
             <span className="flex items-center gap-2">
@@ -407,10 +426,10 @@ export function MediaGallery({
         const res = await fetch("/api/nodes?category=all");
         if (!res.ok) throw new Error("Failed to fetch node list");
         const json = await res.json();
-        
+
         const rawNodes = json.nodes || [];
         const folders = json.folders || [];
-        
+
         const fMap = new Map();
         folders.forEach((f: any) => fMap.set(f.id, f));
         rawNodes.forEach((n: any) => {
@@ -419,7 +438,7 @@ export function MediaGallery({
 
         const folderNames = new Map<string, string>();
         const folderKeys = new Map<string, CryptoKey>();
-        
+
         folderNames.set(node.id, node.name);
         folderKeys.set(node.id, node.nodeKey);
 
@@ -427,7 +446,7 @@ export function MediaGallery({
           if (folderNames.has(folderId)) return folderNames.get(folderId)!;
           const folder = fMap.get(folderId);
           if (!folder) return "Unknown Folder";
-          
+
           try {
             const key = await decryptNodeKeyCascade(folder, fMap);
             folderKeys.set(folderId, key);
@@ -442,7 +461,7 @@ export function MediaGallery({
 
         const allFiles = rawNodes.filter((n: any) => n.type === "FILE");
         const filesToZip: { fileNode: any; relativePath: string }[] = [];
-        
+
         const collectFiles = async (currentFolderId: string, currentPath: string) => {
           const filesInFolder = allFiles.filter((f: any) => f.parentId === currentFolderId);
           for (const file of filesInFolder) {
@@ -455,8 +474,8 @@ export function MediaGallery({
                 const parsed = JSON.parse(decName);
                 filename = parsed.name || parsed.filename;
                 fileIv = parsed.fileIv;
-              } catch {}
-              
+              } catch { }
+
               filesToZip.push({
                 fileNode: { ...file, name: filename, fileIv, nodeKey: fileKey },
                 relativePath: currentPath ? `${currentPath}/${filename}` : filename
@@ -465,7 +484,7 @@ export function MediaGallery({
               console.error("Skipping file decryption failure in collect", file.id, err);
             }
           }
-          
+
           const subfolders = folders.filter((f: any) => f.parentId === currentFolderId);
           for (const sub of subfolders) {
             const subName = await getDecryptedFolderName(sub.id);
@@ -499,23 +518,23 @@ export function MediaGallery({
         });
 
         const zip = new JSZip();
-        
+
         for (let i = 0; i < filesToZip.length; i++) {
           const { fileNode, relativePath } = filesToZip[i];
-          
+
           try {
             if (!fileNode.nodeKey || !fileNode.fileIv) continue;
-            
-            const fileUrl = fileNode.r2Key 
-              ? `/api/media/download?key=${encodeURIComponent(fileNode.r2Key)}` 
+
+            const fileUrl = fileNode.r2Key
+              ? `/api/media/download?key=${encodeURIComponent(fileNode.r2Key)}`
               : `/api/media/download?key=${encodeURIComponent(fileNode.id)}`;
 
             const fileRes = await fetch(fileUrl);
             if (!fileRes.ok) throw new Error("Failed to fetch file contents");
-            
+
             const encryptedBuffer = await fileRes.arrayBuffer();
             const decryptedBlob = await decryptFile(encryptedBuffer, fileNode.nodeKey, fileNode.fileIv);
-            
+
             zip.file(relativePath, decryptedBlob);
           } catch (err) {
             console.error("Failed to add file to zip", fileNode.id, err);
@@ -636,15 +655,19 @@ export function MediaGallery({
     }
   };
 
+  // Track previous refreshTrigger to detect changes
+  const prevRefreshTrigger = React.useRef(refreshTrigger);
+  const hasMounted = React.useRef(false);
 
-  // Clear client-side decrypted cache on refresh trigger (upload, delete, move, copy, etc.)
-  React.useEffect(() => {
-    decryptedCache.current.clear();
-  }, [refreshTrigger]);
-
-  // 1. Fetch, decrypt, and cache nodes (SWR-based client caching)
+  // Fetch, decrypt, and cache nodes
   React.useEffect(() => {
     if (!isReady) return;
+
+    // Clear cache when refreshTrigger changes (upload, delete, move, etc.)
+    if (prevRefreshTrigger.current !== refreshTrigger) {
+      decryptedCache.current.clear();
+      prevRefreshTrigger.current = refreshTrigger;
+    }
 
     let active = true;
 
@@ -652,7 +675,9 @@ export function MediaGallery({
       const cacheKey = `${currentFolderId || "root"}-${activeCategory}-${query}`;
       const cached = decryptedCache.current.get(cacheKey);
 
-      if (cached) {
+      // Only serve from cache if we've mounted before (not first load)
+      // This prevents showing stale/empty results on initial page load
+      if (cached && hasMounted.current) {
         setDecryptedItems(cached.decNodes);
         setFoldersMap(cached.foldersMap);
         setLoading(false);
@@ -673,7 +698,7 @@ export function MediaGallery({
         if (res.ok && active) {
           const json = await res.json();
           const rawNodes: NodeData[] = json.nodes || [];
-          
+
           const fMap = new Map();
           (json.folders || []).forEach((f: any) => {
             fMap.set(f.id, f);
@@ -730,7 +755,7 @@ export function MediaGallery({
                         name: "Root",
                         key: rootKey
                       });
-                    } catch {}
+                    } catch { }
                   }
                 }
               }
@@ -745,6 +770,7 @@ export function MediaGallery({
             setFoldersMap(fMap);
             setDecryptedItems(list);
             decryptedCache.current.set(cacheKey, { decNodes: list, foldersMap: fMap });
+            hasMounted.current = true;
           }
         }
       } catch (err) {
@@ -766,7 +792,7 @@ export function MediaGallery({
   // 3. Client-side local query filtering
   return (
     <>
-      <MediaGalleryContent 
+      <MediaGalleryContent
         decryptedItems={decryptedItems}
         loading={loading}
         viewMode={viewMode}
@@ -940,22 +966,24 @@ function MediaGallerySkeleton({ viewMode, activeCategory }: { viewMode: "grid" |
       <table className="w-full text-left border-collapse">
         <thead>
           <tr className="bg-muted/40 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            <th className="px-6 py-3.5">Name</th>
+            <th className="px-6 py-3.5 w-full">Name</th>
             <th className="px-6 py-3.5 hidden sm:table-cell">Type</th>
             <th className="px-6 py-3.5 hidden md:table-cell">Size</th>
             {activeCategory && activeCategory !== "drive" && (
               <th className="px-6 py-3.5 hidden md:table-cell">Location</th>
             )}
             <th className="px-6 py-3.5 hidden lg:table-cell">Created At</th>
-            <th className="px-6 py-3.5 text-right"></th>
+            <th className="px-6 py-3.5 text-right w-12"></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {Array.from({ length: 8 }).map((_, i) => (
             <tr key={i}>
-              <td className="px-6 py-3.5 flex items-center gap-3 min-w-0">
-                <Skeleton className="h-8 w-8 rounded-md flex-shrink-0" />
-                <Skeleton className="h-4 w-40" />
+              <td className="px-6 py-3.5 w-full">
+                <div className="flex items-center gap-3 w-full">
+                  <Skeleton className="h-8 w-8 rounded-md flex-shrink-0" />
+                  <Skeleton className="h-4 w-40" />
+                </div>
               </td>
               <td className="px-6 py-3.5 hidden sm:table-cell">
                 <Skeleton className="h-4 w-12" />
@@ -983,7 +1011,7 @@ function MediaGallerySkeleton({ viewMode, activeCategory }: { viewMode: "grid" |
 }
 
 // Separate view rendering component to keep it clean and handle props
-function MediaGalleryContent({ 
+function MediaGalleryContent({
   decryptedItems, loading, viewMode, activeCategory, onNavigate, onSelectNode, onCloseInfoPanel, selectedNodeId, onDelete, onOpenViewer,
   viewerNode, viewerKey, setViewerNode, setViewerKey, localQuery,
   onTriggerUpload, onTriggerCreateFolder, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly,
@@ -1005,10 +1033,10 @@ function MediaGalleryContent({
       if (a.type !== b.type) {
         return a.type === "FOLDER" ? -1 : 1;
       }
-      
+
       let valA: any = "";
       let valB: any = "";
-      
+
       if (sortKey === "name") {
         valA = a.name.toLowerCase();
         valB = b.name.toLowerCase();
@@ -1019,12 +1047,12 @@ function MediaGalleryContent({
         valA = new Date(a.createdAt).getTime();
         valB = new Date(b.createdAt).getTime();
       }
-      
+
       if (valA < valB) return sortDirection === "asc" ? -1 : 1;
       if (valA > valB) return sortDirection === "asc" ? 1 : -1;
       return 0;
     });
-    
+
     return items;
   }, [filteredItems, sortKey, sortDirection]);
 
@@ -1068,9 +1096,9 @@ function MediaGalleryContent({
     return viewMode === "grid" ? (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
         {sortedItems.map((item: any) => (
-          <GridItem 
-            key={item.id} 
-            item={item} 
+          <GridItem
+            key={item.id}
+            item={item}
             activeCategory={activeCategory}
             onNavigate={onNavigate}
             onSelect={onSelectNode}
@@ -1093,8 +1121,8 @@ function MediaGalleryContent({
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-muted/40 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider select-none">
-              <th 
-                className="px-6 py-3.5 cursor-pointer hover:bg-muted/60 transition-colors group/header"
+              <th
+                className="px-6 py-3.5 cursor-pointer hover:bg-muted/60 transition-colors group/header w-full"
                 onClick={() => handleSort("name")}
               >
                 <div className="flex items-center gap-1.5">
@@ -1107,7 +1135,7 @@ function MediaGalleryContent({
                 </div>
               </th>
               <th className="px-6 py-3.5 hidden sm:table-cell">Type</th>
-              <th 
+              <th
                 className="px-6 py-3.5 hidden md:table-cell cursor-pointer hover:bg-muted/60 transition-colors group/header"
                 onClick={() => handleSort("size")}
               >
@@ -1123,7 +1151,7 @@ function MediaGalleryContent({
               {activeCategory !== "drive" && (
                 <th className="px-6 py-3.5 hidden md:table-cell">Location</th>
               )}
-              <th 
+              <th
                 className="px-6 py-3.5 hidden lg:table-cell cursor-pointer hover:bg-muted/60 transition-colors group/header"
                 onClick={() => handleSort("createdAt")}
               >
@@ -1136,14 +1164,14 @@ function MediaGalleryContent({
                   )}
                 </div>
               </th>
-              <th className="px-6 py-3.5 text-right"></th>
+              <th className="px-6 py-3.5 text-right w-12"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {sortedItems.map((item: any) => (
-              <ListItem 
-                key={item.id} 
-                item={item} 
+              <ListItem
+                key={item.id}
+                item={item}
                 activeCategory={activeCategory}
                 onNavigate={onNavigate}
                 onSelect={onSelectNode}
@@ -1167,6 +1195,29 @@ function MediaGalleryContent({
       </div>
     );
   };
+
+  const isMobileDevice = typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window));
+
+  if (isMobileDevice) {
+    return (
+      <>
+        <div className="flex-1 w-full min-h-[450px]">
+          {renderContent()}
+        </div>
+        {viewerNode && viewerKey && (
+          <FileViewer
+            isOpen={!!viewerNode}
+            onClose={() => {
+              setViewerNode(null);
+              setViewerKey(null);
+            }}
+            node={viewerNode}
+            nodeKey={viewerKey}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <>
@@ -1197,31 +1248,92 @@ function MediaGalleryContent({
       </ContextMenu>
 
       {viewerNode && viewerKey && (
-        <FileViewer 
-          isOpen={!!viewerNode} 
+        <FileViewer
+          isOpen={!!viewerNode}
           onClose={() => {
             setViewerNode(null);
             setViewerKey(null);
-          }} 
-          node={viewerNode} 
-          nodeKey={viewerKey} 
+          }}
+          node={viewerNode}
+          nodeKey={viewerKey}
         />
       )}
     </>
   );
 }
 
-// Icon mapper helper
 function getFileIcon(mimeType: string | null, name: string) {
-  if (!mimeType) return <File size={20} />;
-  if (mimeType.startsWith("image/")) return <ImageIcon size={20} className="text-blue-500" />;
-  if (mimeType.startsWith("video/")) return <FileVideo size={20} className="text-red-500" />;
-  if (mimeType.startsWith("audio/")) return <FileAudio size={20} className="text-emerald-500" />;
-  if (mimeType === "application/pdf") return <FilePdf size={20} className="text-rose-500" />;
-  if (mimeType.startsWith("text/") || name.endsWith(".json") || name.endsWith(".js") || name.endsWith(".ts")) {
-    return <FileCode size={20} className="text-yellow-600" />;
+  const ext = name.split(".").pop()?.toLowerCase();
+  
+  // PowerPoint
+  if (ext === "pptx" || ext === "ppt" || ext === "odp" || mimeType === "application/vnd.ms-powerpoint" || mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
+    return <FilePpt size={20} className="text-orange-500" weight="fill" />;
   }
-  return <FileText size={20} className="text-gray-500" />;
+  
+  // Excel
+  if (ext === "xlsx" || ext === "xls" || ext === "ods" || mimeType === "application/vnd.ms-excel" || mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+    return <FileXls size={20} className="text-emerald-500" weight="fill" />;
+  }
+  
+  // Word
+  if (ext === "docx" || ext === "doc" || ext === "odt" || mimeType === "application/msword" || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    return <FileDoc size={20} className="text-blue-500" weight="fill" />;
+  }
+  
+  // Zip/Archive
+  if (ext === "zip" || ext === "rar" || ext === "7z" || ext === "tar" || ext === "gz" || mimeType === "application/zip" || mimeType === "application/x-rar-compressed") {
+    return <FileZip size={20} className="text-yellow-600" weight="fill" />;
+  }
+
+  if (mimeType) {
+    if (mimeType.startsWith("image/")) return <ImageIcon size={20} className="text-purple-500" weight="fill" />;
+    if (mimeType.startsWith("video/")) return <FileVideo size={20} className="text-rose-500" weight="fill" />;
+    if (mimeType.startsWith("audio/")) return <FileAudio size={20} className="text-sky-500" weight="fill" />;
+    if (mimeType === "application/pdf") return <FilePdf size={20} className="text-red-500" weight="fill" />;
+    if (mimeType.startsWith("text/") || ext === "json" || ext === "js" || ext === "ts" || ext === "md") {
+      return <FileCode size={20} className="text-amber-500" weight="fill" />;
+    }
+  }
+  
+  // Extension check fallbacks
+  if (ext === "pdf") return <FilePdf size={20} className="text-red-500" weight="fill" />;
+  if (ext === "csv") return <FileXls size={20} className="text-emerald-500" weight="fill" />;
+  if (ext === "txt" || ext === "md") return <FileText size={20} className="text-gray-400" weight="fill" />;
+  
+  // Default normal file icon for random types
+  return <File size={20} className="text-muted-foreground/60" />;
+}
+
+// Map MIME types to simple, human-readable labels
+function getFileTypeLabel(mimeType: string | null, name: string): string {
+  if (!mimeType) return "File";
+
+  // Check by file extension first (most reliable)
+  const ext = name.split(".").pop()?.toLowerCase();
+  const extMap: Record<string, string> = {
+    pdf: "PDF", doc: "Word", docx: "Word", odt: "Document",
+    xls: "Excel", xlsx: "Excel", ods: "Spreadsheet", csv: "CSV",
+    ppt: "PowerPoint", pptx: "PowerPoint", odp: "Slides",
+    rtf: "Rich Text", txt: "Text", md: "Markdown",
+    json: "JSON", js: "JavaScript", ts: "TypeScript", jsx: "JSX", tsx: "TSX",
+    html: "HTML", css: "CSS", xml: "XML", yaml: "YAML", yml: "YAML",
+    py: "Python", java: "Java", cpp: "C++", c: "C", rs: "Rust", go: "Go",
+    zip: "ZIP", rar: "RAR", "7z": "Archive", tar: "Archive", gz: "Archive",
+    png: "PNG", jpg: "JPEG", jpeg: "JPEG", gif: "GIF", webp: "WebP",
+    svg: "SVG", bmp: "BMP", ico: "Icon",
+    mp4: "MP4", mov: "MOV", avi: "AVI", mkv: "MKV", webm: "WebM",
+    mp3: "MP3", wav: "WAV", ogg: "OGG", flac: "FLAC", aac: "AAC",
+    exe: "Executable", dmg: "Disk Image", apk: "APK", iso: "ISO",
+  };
+  if (ext && extMap[ext]) return extMap[ext];
+
+  // Fallback: simplify MIME type
+  if (mimeType.startsWith("image/")) return mimeType.split("/")[1]?.toUpperCase() || "Image";
+  if (mimeType.startsWith("video/")) return mimeType.split("/")[1]?.toUpperCase() || "Video";
+  if (mimeType.startsWith("audio/")) return mimeType.split("/")[1]?.toUpperCase() || "Audio";
+  if (mimeType.startsWith("text/")) return "Text";
+
+  return "File";
 }
 
 // FORMAT STORAGE SIZE
@@ -1240,21 +1352,21 @@ const formatCreatedAt = (createdAtString: string) => {
   if (!createdAtString) return "—";
   const date = new Date(createdAtString);
   const now = new Date();
-  
+
   const isToday = date.getDate() === now.getDate() &&
-                  date.getMonth() === now.getMonth() &&
-                  date.getFullYear() === now.getFullYear();
-                  
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
   if (isToday) {
     return "Today, " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
-  
+
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   const isYesterday = date.getDate() === yesterday.getDate() &&
-                      date.getMonth() === yesterday.getMonth() &&
-                      date.getFullYear() === yesterday.getFullYear();
-                      
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear();
+
   if (isYesterday) {
     return "Yesterday, " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
@@ -1283,6 +1395,191 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [tempName, setTempName] = React.useState(getBaseName(item.name, item.type));
   const isSubmitting = React.useRef(false);
+
+  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  const [textPreview, setTextPreview] = React.useState<string | null>(null);
+  const [sheetPreview, setSheetPreview] = React.useState<string[][] | null>(null);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    if (item.type !== "FILE" || !item.url || !item.nodeKey || !item.fileIv) return;
+
+    let active = true;
+    let localUrl: string | null = null;
+
+    const loadPreview = async () => {
+      const isImage = item.mimeType?.startsWith("image/");
+      const isText = item.mimeType?.startsWith("text/") || item.name.endsWith(".md") || item.name.endsWith(".json") || item.name.endsWith(".js");
+      const isCsv = item.name.endsWith(".csv");
+      const isPdf = item.mimeType === "application/pdf";
+      const ext = item.name.split(".").pop()?.toLowerCase();
+      const isDoc = ext === "docx" || ext === "doc" || ext === "xlsx" || ext === "xls" || ext === "pptx" || ext === "ppt";
+
+      if (!isImage && !isText && !isCsv && !isPdf && !isDoc) return;
+
+      setPreviewLoading(true);
+      try {
+        const res = await fetch(item.url);
+        if (!res.ok) return;
+
+        const encryptedBuffer = await res.arrayBuffer();
+        const decryptedBlob = await decryptFile(encryptedBuffer, item.nodeKey, item.fileIv);
+
+        if (!active) return;
+
+        if (isImage) {
+          localUrl = URL.createObjectURL(decryptedBlob);
+          setPreviewUrl(localUrl);
+        } else if (isText) {
+          const text = await decryptedBlob.text();
+          setTextPreview(text.substring(0, 150));
+        } else if (isCsv) {
+          const text = await decryptedBlob.text();
+          const rows = text.split("\n").slice(0, 4).map(r => r.split(",").slice(0, 3));
+          setSheetPreview(rows);
+        } else if (isPdf || isDoc) {
+          localUrl = URL.createObjectURL(decryptedBlob);
+          setPreviewUrl(localUrl);
+        }
+      } catch (err) {
+        console.error("Preview load failed", item.id, err);
+      } finally {
+        if (active) setPreviewLoading(false);
+      }
+    };
+
+    loadPreview();
+
+    return () => {
+      active = false;
+      if (localUrl) {
+        URL.revokeObjectURL(localUrl);
+      }
+    };
+  }, [item]);
+
+  const renderPreviewContainer = () => {
+    const isImage = item.mimeType?.startsWith("image/");
+    const isText = item.mimeType?.startsWith("text/") || item.name.endsWith(".md") || item.name.endsWith(".json") || item.name.endsWith(".js");
+    const isCsv = item.name.endsWith(".csv");
+    const isPdf = item.mimeType === "application/pdf";
+    const isAudio = item.mimeType?.startsWith("audio/");
+    const isVideo = item.mimeType?.startsWith("video/");
+
+    if (previewLoading) {
+      return (
+        <div className="w-full h-24 rounded bg-muted/40 animate-pulse flex items-center justify-center">
+          <span className="w-4 h-4 border-2 border-primary/40 border-t-transparent rounded-full animate-spin" />
+        </div>
+      );
+    }
+
+    if (isImage && previewUrl) {
+      return (
+        <div className="w-full h-24 rounded overflow-hidden border border-border/30 bg-muted/10 flex items-center justify-center">
+          <img src={previewUrl} alt="" className="w-full h-full object-cover select-none pointer-events-none" />
+        </div>
+      );
+    }
+
+    if (isText && textPreview) {
+      return (
+        <div className="w-full h-24 rounded border border-border/40 bg-muted/10 p-2 text-[8px] font-mono overflow-hidden text-left text-muted-foreground/80 leading-tight break-all select-none">
+          {textPreview}
+        </div>
+      );
+    }
+
+    if (isCsv && sheetPreview) {
+      return (
+        <div className="w-full h-24 rounded border border-border/40 bg-muted/10 p-1 overflow-hidden select-none flex flex-col gap-0.5 text-[7px]">
+          {sheetPreview.map((row, rIdx) => (
+            <div key={rIdx} className="flex gap-0.5 w-full">
+              {row.map((cell, cIdx) => (
+                <div key={cIdx} className="flex-1 bg-card border border-border/20 px-1 py-0.5 truncate text-center">
+                  {cell}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (isPdf && previewUrl) {
+      return (
+        <div className="w-full h-28 rounded overflow-hidden border border-border/30 bg-white dark:bg-neutral-900 flex items-start justify-center select-none pointer-events-none">
+          <PdfThumbnail blobUrl={previewUrl} />
+        </div>
+      );
+    }
+
+    if (isPdf && !previewUrl) {
+      return (
+        <div className="w-full h-28 rounded border border-border/40 bg-white dark:bg-card p-2.5 flex flex-col gap-1.5 shadow-sm overflow-hidden select-none text-left">
+          <div className="flex items-center gap-1.5 border-b border-border/20 pb-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
+            <div className="h-2 w-16 bg-muted rounded" />
+          </div>
+          <div className="h-1.5 w-full bg-muted/70 rounded" />
+          <div className="h-1.5 w-5/6 bg-muted/50 rounded" />
+          <div className="h-1.5 w-4/6 bg-muted/40 rounded" />
+        </div>
+      );
+    }
+
+    if (isVideo) {
+      return (
+        <div className="w-full h-24 rounded border border-border/40 bg-black relative flex items-center justify-center overflow-hidden">
+          <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center text-white">
+            <Play size={12} weight="fill" />
+          </div>
+          <span className="absolute bottom-1 right-1 text-[8px] px-1 py-0.5 bg-black/60 text-white rounded font-mono">VIDEO</span>
+        </div>
+      );
+    }
+
+    if (isAudio) {
+      return (
+        <div className="w-full h-24 rounded border border-border/40 bg-muted/10 flex flex-col items-center justify-center p-2 select-none text-muted-foreground gap-1.5">
+          <FileAudio size={24} className="text-primary/70 animate-pulse" />
+          <div className="flex items-center gap-0.5 h-3 justify-center">
+            <div className="w-0.5 h-2 bg-primary/40 rounded-full" />
+            <div className="w-0.5 h-3 bg-primary/60 rounded-full" />
+            <div className="w-0.5 h-1.5 bg-primary/40 rounded-full" />
+            <div className="w-0.5 h-2 bg-primary/50 rounded-full" />
+          </div>
+        </div>
+      );
+    }
+
+    if (item.type === "FOLDER") {
+      return (
+        <div className="w-full h-24 rounded border border-border/30 bg-yellow-500/5 dark:bg-yellow-500/10 flex flex-col items-center justify-center p-2 select-none text-yellow-500/80 gap-1.5">
+          <Folder weight="fill" size={32} />
+          <span className="text-[9px] font-semibold text-yellow-600/70 dark:text-yellow-500/60 uppercase">Folder</span>
+        </div>
+      );
+    }
+
+    // Document files (Word, Excel, etc.) - show styled file-type icon or preview glimpse
+    const isDoc = !isImage && !isText && !isCsv && !isPdf && !isAudio && !isVideo && item.type === "FILE";
+    if (isDoc) {
+      const ext = item.name.split(".").pop()?.toLowerCase();
+      return (
+        <div className="w-full h-24 rounded overflow-hidden select-none">
+          <DocThumbnail blobUrl={previewUrl || ""} fileName={item.name} fileType={ext} />
+        </div>
+      );
+    }
+
+    return (
+      <div className="w-full h-24 rounded border border-border/30 bg-muted/10 flex flex-col items-center justify-center p-2 select-none text-muted-foreground/60 gap-1.5">
+        <File size={28} />
+        <span className="text-[9px] font-semibold uppercase">Document</span>
+      </div>
+    );
+  };
 
   React.useEffect(() => {
     setTempName(getBaseName(item.name, item.type));
@@ -1316,7 +1613,17 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
   };
 
   const handleClick = () => {
-    onSelect(item, false); // Select without opening details panel
+    const isMobile = window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window);
+    if (isMobile) {
+      // On mobile, single tap opens directly
+      if (item.type === "FOLDER") {
+        onNavigate(item.id, item.name, item.nodeKey);
+      } else if (item.nodeKey && item.fileIv) {
+        onOpenViewer(item, item.nodeKey, item.name, item.fileIv);
+      }
+    } else {
+      onSelect(item, false);
+    }
   };
 
   const handleDoubleClick = () => {
@@ -1380,7 +1687,7 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
     <ContextMenu>
       <ContextMenuTrigger
         render={
-          <div 
+          <div
             onClick={handleClick}
             onDoubleClick={handleDoubleClick}
             onContextMenu={handleClick}
@@ -1390,108 +1697,86 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`group relative border rounded-xl p-4 bg-card hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between aspect-square ${
-              isDragOver ? "border-dashed border-2 border-primary bg-primary/10 ring-2 ring-primary/30 animate-pulse" :
-              isSelected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border hover:border-primary/50"
-            }`}
+            className={`group border rounded-2xl p-3 bg-card hover:shadow-md transition-all cursor-pointer flex flex-col gap-3 min-w-0 ${isDragOver ? "border-dashed border-2 border-primary bg-primary/10 ring-2 ring-primary/30 animate-pulse" :
+                isSelected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border hover:border-primary/50"
+              }`}
           />
         }
       >
-        <div className="flex items-start justify-between">
-          <div className="p-2.5 bg-muted rounded-lg group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-            {item.type === "FOLDER" ? (
-              <Folder weight="fill" size={26} className="text-yellow-500" />
-            ) : (
-              getFileIcon(item.mimeType, item.name)
-            )}
-          </div>
-
-          <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
-            {item.type === "FILE" && item.nodeKey && item.fileIv && (
-              <button 
-                onClick={(e) => { e.stopPropagation(); onOpenViewer(item, item.nodeKey, item.name, item.fileIv); }}
-                className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
-                title="Quick view"
-              >
-                <Eye size={16} />
-              </button>
-            )}
-            <button 
-              onClick={(e) => { e.stopPropagation(); onSelect(item, true); }}
-              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
-              title="View details"
-            >
-              <Info size={16} />
-            </button>
-            <button 
-              onClick={(e) => onDelete(item.id, e)}
-              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-destructive"
-              title="Move to Trash"
-            >
-              <Trash size={16} />
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4 min-w-0 select-none">
-          {renameNodeId === item.id ? (
-            <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()}>
-              <input
-                type="text"
-                value={tempName}
-                onChange={(e) => setTempName(e.target.value)}
-                disabled={isRenamingLoading}
-                className="w-full bg-muted border border-primary rounded px-2 py-1 outline-none text-sm text-foreground focus:ring-1 focus:ring-primary/30 min-w-0 disabled:opacity-50"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !isRenamingLoading) {
-                    e.stopPropagation();
-                    handleSubmit(tempName.trim());
-                  } else if (e.key === "Escape" && !isRenamingLoading) {
-                    e.stopPropagation();
-                    setRenameNodeId(null);
-                  }
-                }}
-                autoFocus
-                onClick={(e) => e.stopPropagation()}
-                onDoubleClick={(e) => e.stopPropagation()}
-              />
-              {isRenamingLoading ? (
-                <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin flex-shrink-0 m-1" />
+        {/* Top Header Row (matches reference photo: Icon, name, actions button) */}
+        <div className="flex items-center justify-between gap-2 w-full min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="flex-shrink-0">
+              {item.type === "FOLDER" ? (
+                <Folder weight="fill" size={18} className="text-yellow-500" />
               ) : (
-                <>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSubmit(tempName.trim());
-                    }}
-                    className="p-1 hover:bg-emerald-500/10 text-emerald-500 rounded transition-colors cursor-pointer flex-shrink-0"
-                    title="Save"
-                  >
-                    <Check size={16} weight="bold" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setRenameNodeId(null);
-                    }}
-                    className="p-1 hover:bg-destructive/10 text-destructive rounded transition-colors cursor-pointer flex-shrink-0"
-                    title="Cancel"
-                  >
-                    <X size={16} weight="bold" />
-                  </button>
-                </>
+                <div className="scale-75 origin-left -mr-1">
+                  {getFileIcon(item.mimeType, item.name)}
+                </div>
               )}
             </div>
-          ) : (
-            <h4 className="text-sm font-medium text-foreground truncate" title={item.name}>
-              {item.name}
-            </h4>
-          )}
-          <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
-            <ShieldCheck size={12} weight="fill" className="text-primary/70" />
-            {item.type === "FOLDER" ? `Folder • ${formatStorageSize(item.sizeBytes)}` : formatStorageSize(item.sizeBytes)}
-          </p>
+
+            {renameNodeId === item.id ? (
+              <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="text"
+                  value={tempName}
+                  onChange={(e) => setTempName(e.target.value)}
+                  disabled={isRenamingLoading}
+                  className="w-full bg-muted border border-primary rounded px-2 py-0.5 outline-none text-xs text-foreground focus:ring-1 focus:ring-primary/30 min-w-0 disabled:opacity-50"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !isRenamingLoading) {
+                      e.stopPropagation();
+                      handleSubmit(tempName.trim());
+                    } else if (e.key === "Escape" && !isRenamingLoading) {
+                      e.stopPropagation();
+                      setRenameNodeId(null);
+                    }
+                  }}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            ) : (
+              <h4 className="text-xs font-semibold text-foreground truncate select-none" title={item.name}>
+                {item.name}
+              </h4>
+            )}
+          </div>
+
+          <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity flex-shrink-0">
+            {item.type === "FILE" && item.nodeKey && item.fileIv && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenViewer(item, item.nodeKey, item.name, item.fileIv); }}
+                className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground cursor-pointer"
+                title="Quick view"
+              >
+                <Eye size={14} />
+              </button>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); onSelect(item, true); }}
+              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground cursor-pointer"
+              title="View details"
+            >
+              <Info size={14} />
+            </button>
+            <button
+              onClick={(e) => onDelete(item.id, e)}
+              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-destructive cursor-pointer"
+              title="Move to Trash"
+            >
+              <Trash size={14} />
+            </button>
+          </div>
         </div>
+
+        {/* Middle Area: File Preview (dynamic from decryptFile or custom fallback styles) */}
+        <div className="w-full">
+          {renderPreviewContainer()}
+        </div>
+
       </ContextMenuTrigger>
 
       <ContextMenuContent className="w-48 bg-card/85 backdrop-blur-md border border-border/80 shadow-lg rounded-xl p-1.5 animate-in fade-in-50 duration-100 select-none">
@@ -1594,7 +1879,16 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 
   const handleClick = () => {
     setDropdownOpenId(null);
-    onSelect(item, false); // Select without opening details panel
+    const isMobile = window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window);
+    if (isMobile) {
+      if (item.type === "FOLDER") {
+        onNavigate(item.id, item.name, item.nodeKey);
+      } else if (item.nodeKey && item.fileIv) {
+        onOpenViewer(item, item.nodeKey, item.name, item.fileIv);
+      }
+    } else {
+      onSelect(item, false);
+    }
   };
 
   const handleDoubleClick = () => {
@@ -1655,34 +1949,25 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
     }
   };
 
-  return (
-    <ContextMenu
-      onOpenChange={(open) => {
-        if (open) {
-          setDropdownOpenId(null);
-        }
-      }}
+  const isMobileDevice = typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window));
+
+  const rowContent = (
+    <tr
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
+      onContextMenu={handleClick}
+      draggable={activeCategory === "drive" && renameNodeId !== item.id}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`cursor-pointer transition-colors group ${isDragOver ? "bg-primary/10 border-2 border-dashed border-primary animate-pulse" :
+          isSelected ? "bg-primary/5 hover:bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"
+        } ${dropdownOpenId === item.id ? "relative z-30" : ""}`}
     >
-      <ContextMenuTrigger
-        render={
-          <tr 
-            onClick={handleClick}
-            onDoubleClick={handleDoubleClick}
-            onContextMenu={handleClick}
-            draggable={activeCategory === "drive" && renameNodeId !== item.id}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={`cursor-pointer transition-colors group ${
-              isDragOver ? "bg-primary/10 border-2 border-dashed border-primary animate-pulse" :
-              isSelected ? "bg-primary/5 hover:bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"
-            } ${dropdownOpenId === item.id ? "relative z-30" : ""}`}
-          />
-        }
-      >
-        <td className="px-6 py-3.5 flex items-center gap-3 min-w-0">
+      <td className="px-6 py-3.5 w-full max-w-0">
+        <div className="flex items-center gap-3 w-full min-w-0">
           <div className="p-1.5 bg-muted rounded-md group-hover:bg-primary/10 group-hover:text-primary transition-colors flex-shrink-0">
             {item.type === "FOLDER" ? (
               <Folder weight="fill" size={20} className="text-yellow-500" />
@@ -1691,13 +1976,13 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
             )}
           </div>
           {renameNodeId === item.id ? (
-            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
               <input
                 type="text"
                 value={tempName}
                 onChange={(e) => setTempName(e.target.value)}
                 disabled={isRenamingLoading}
-                className="bg-muted border border-primary rounded px-2 py-0.5 outline-none text-sm text-foreground focus:ring-1 focus:ring-primary/30 max-w-xs md:max-w-md min-w-0 disabled:opacity-50"
+                className="bg-muted border border-primary rounded px-2 py-0.5 outline-none text-sm text-foreground focus:ring-1 focus:ring-primary/30 w-full min-w-0 disabled:opacity-50"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !isRenamingLoading) {
                     e.stopPropagation();
@@ -1739,171 +2024,186 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
               )}
             </div>
           ) : (
-            <span className="text-sm font-medium text-foreground truncate max-w-xs md:max-w-md select-none" title={item.name}>
+            <span className="text-sm font-medium text-foreground truncate flex-1 min-w-0 select-none" title={item.name}>
               {item.name}
             </span>
           )}
-        </td>
+        </div>
+      </td>
 
-        <td className="px-6 py-3.5 text-xs text-muted-foreground hidden sm:table-cell">
-          {item.type === "FOLDER" ? "Folder" : item.mimeType?.split("/")[1]?.toUpperCase() || "File"}
-        </td>
+      <td className="px-6 py-3.5 text-xs text-muted-foreground hidden sm:table-cell">
+        {item.type === "FOLDER" ? "Folder" : (item.name.split(".").pop()?.toUpperCase() || "File")}
+      </td>
 
-        <td className="px-6 py-3.5 text-xs text-muted-foreground hidden md:table-cell">
-          {formatStorageSize(item.sizeBytes)}
-        </td>
+      <td className="px-6 py-3.5 text-xs text-muted-foreground hidden md:table-cell">
+        {formatStorageSize(item.sizeBytes)}
+      </td>
 
-        {activeCategory !== "drive" && (
-          <td className="px-6 py-3.5 text-xs text-muted-foreground hidden md:table-cell min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {item.locationPath && item.locationPath.length > 0 ? (
-                item.locationPath.map((loc: any, idx: number) => (
-                  <React.Fragment key={loc.id}>
-                    {idx > 0 && <span className="opacity-45 select-none mx-0.5">/</span>}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onNavigate(loc.id, loc.name, loc.key);
-                      }}
-                      className="text-primary hover:underline hover:text-primary/80 transition-colors font-medium text-[11px] cursor-pointer"
-                    >
-                      {loc.name}
-                    </button>
-                  </React.Fragment>
-                ))
-              ) : (
-                <span className="opacity-45 select-none">—</span>
-              )}
-            </div>
-          </td>
-        )}
-
-        <td className="px-6 py-3.5 text-xs text-muted-foreground hidden lg:table-cell">
-          {formatCreatedAt(item.createdAt)}
-        </td>
-
-        <td className="px-6 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
-          <div className="relative inline-block text-left">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const rect = e.currentTarget.getBoundingClientRect();
-                setDropdownOpenId(dropdownOpenId === item.id ? null : item.id);
-                
-                const hasPreview = item.type === "FILE" && item.nodeKey && item.fileIv;
-                const itemsCount = item.type === "FOLDER" ? 5 : (hasPreview ? 6 : 5);
-                const menuHeight = itemsCount * 32 + 14;
-                
-                const shouldOpenUpward = window.innerHeight - rect.bottom < menuHeight;
-                const topPos = shouldOpenUpward 
-                  ? rect.top - menuHeight + window.scrollY 
-                  : rect.bottom + window.scrollY;
-
-                setDropdownPosition({
-                  top: topPos,
-                  left: rect.right - 176 + window.scrollX,
-                });
-              }}
-              className={`p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer ${
-                dropdownOpenId === item.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-              }`}
-              title="More actions"
-            >
-              <DotsThreeVertical size={18} weight="bold" />
-            </button>
-
-            {dropdownOpenId === item.id && dropdownPosition && createPortal(
-              <div 
-                style={{
-                  position: "absolute",
-                  top: `${dropdownPosition.top}px`,
-                  left: `${dropdownPosition.left}px`,
-                }}
-                className="w-44 rounded-xl border border-border bg-popover shadow-lg py-1.5 z-[9999] text-left text-xs animate-in fade-in-50 duration-100 select-none"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {item.type === "FOLDER" ? (
+      {activeCategory !== "drive" && (
+        <td className="px-6 py-3.5 text-xs text-muted-foreground hidden md:table-cell min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {item.locationPath && item.locationPath.length > 0 ? (
+              item.locationPath.map((loc: any, idx: number) => (
+                <React.Fragment key={loc.id}>
+                  {idx > 0 && <span className="opacity-45 select-none mx-0.5">/</span>}
                   <button
-                    onClick={() => {
-                      setDropdownOpenId(null);
-                      onNavigate(item.id, item.name, item.nodeKey);
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigate(loc.id, loc.name, loc.key);
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                    className="text-primary hover:underline hover:text-primary/80 transition-colors font-medium text-[11px] cursor-pointer"
                   >
-                    <FolderOpen size={15} />
-                    <span>Open</span>
+                    {loc.name}
                   </button>
-                ) : (
-                  item.nodeKey && item.fileIv && (
-                    <button
-                      onClick={() => {
-                        setDropdownOpenId(null);
-                        onOpenViewer(item, item.nodeKey!, item.name, item.fileIv!);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                    >
-                      <Eye size={15} />
-                      <span>Quick View</span>
-                    </button>
-                  )
-                )}
-                <button
-                  onClick={() => {
-                    setDropdownOpenId(null);
-                    onSelect(item, true);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                >
-                  <Info size={15} />
-                  <span>Item Details</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setDropdownOpenId(null);
-                    onMoveTo(item);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                >
-                  <ArrowSquareOut size={15} />
-                  <span>Move to...</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setDropdownOpenId(null);
-                    onCopyTo(item);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                >
-                  <Copy size={15} />
-                  <span>Copy to...</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setDropdownOpenId(null);
-                    onRename(item);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                >
-                  <PencilSimple size={15} />
-                  <span>Rename</span>
-                </button>
-                <div className="h-px bg-border my-1" />
-                <button
-                  onClick={(e) => {
-                    setDropdownOpenId(null);
-                    onDelete(item.id, e);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-destructive hover:bg-destructive/10 font-medium text-left cursor-pointer"
-                >
-                  <Trash size={15} />
-                  <span>Move to Trash</span>
-                </button>
-              </div>,
-              document.body
+                </React.Fragment>
+              ))
+            ) : (
+              <span className="opacity-45 select-none">—</span>
             )}
           </div>
         </td>
-      </ContextMenuTrigger>
+      )}
+
+      <td className="px-6 py-3.5 text-xs text-muted-foreground hidden lg:table-cell">
+        {formatCreatedAt(item.createdAt)}
+      </td>
+
+      <td className="px-6 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+        <div className="relative inline-block text-left">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              setDropdownOpenId(dropdownOpenId === item.id ? null : item.id);
+
+              const hasPreview = item.type === "FILE" && item.nodeKey && item.fileIv;
+              const itemsCount = item.type === "FOLDER" ? 5 : (hasPreview ? 6 : 5);
+              const menuHeight = itemsCount * 32 + 14;
+
+              const shouldOpenUpward = window.innerHeight - rect.bottom < menuHeight;
+              const topPos = shouldOpenUpward
+                ? rect.top - menuHeight + window.scrollY
+                : rect.bottom + window.scrollY;
+
+              setDropdownPosition({
+                top: topPos,
+                left: rect.right - 176 + window.scrollX,
+              });
+            }}
+            className={`p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer ${dropdownOpenId === item.id ? "opacity-100" : "opacity-100 md:opacity-0 md:group-hover:opacity-100"
+              }`}
+            title="More actions"
+          >
+            <DotsThreeVertical size={18} weight="bold" />
+          </button>
+
+          {dropdownOpenId === item.id && dropdownPosition && createPortal(
+            <div
+              style={{
+                position: "absolute",
+                top: `${dropdownPosition.top}px`,
+                left: `${dropdownPosition.left}px`,
+              }}
+              className="w-44 rounded-xl border border-border bg-popover shadow-lg py-1.5 z-[9999] text-left text-xs animate-in fade-in-50 duration-100 select-none"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {item.type === "FOLDER" ? (
+                <button
+                  onClick={() => {
+                    setDropdownOpenId(null);
+                    onNavigate(item.id, item.name, item.nodeKey);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                >
+                  <FolderOpen size={15} />
+                  <span>Open</span>
+                </button>
+              ) : (
+                item.nodeKey && item.fileIv && (
+                  <button
+                    onClick={() => {
+                      setDropdownOpenId(null);
+                      onOpenViewer(item, item.nodeKey!, item.name, item.fileIv!);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                  >
+                    <Eye size={15} />
+                    <span>Quick View</span>
+                  </button>
+                )
+              )}
+              <button
+                onClick={() => {
+                  setDropdownOpenId(null);
+                  onSelect(item, true);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+              >
+                <Info size={15} />
+                <span>Item Details</span>
+              </button>
+              <button
+                onClick={() => {
+                  setDropdownOpenId(null);
+                  onMoveTo(item);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+              >
+                <ArrowSquareOut size={15} />
+                <span>Move to...</span>
+              </button>
+              <button
+                onClick={() => {
+                  setDropdownOpenId(null);
+                  onCopyTo(item);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+              >
+                <Copy size={15} />
+                <span>Copy to...</span>
+              </button>
+              <button
+                onClick={() => {
+                  setDropdownOpenId(null);
+                  onRename(item);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+              >
+                <PencilSimple size={15} />
+                <span>Rename</span>
+              </button>
+              <div className="h-px bg-border my-1" />
+              <button
+                onClick={(e) => {
+                  setDropdownOpenId(null);
+                  onDelete(item.id, e);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-destructive hover:bg-destructive/10 font-medium text-left cursor-pointer"
+              >
+                <Trash size={15} />
+                <span>Move to Trash</span>
+              </button>
+            </div>,
+            document.body
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+
+  if (isMobileDevice) {
+    return rowContent;
+  }
+
+  return (
+    <ContextMenu
+      onOpenChange={(open) => {
+        if (open) {
+          setDropdownOpenId(null);
+        }
+      }}
+    >
+      <ContextMenuTrigger render={rowContent} />
 
       <ContextMenuContent className="w-48 bg-card/85 backdrop-blur-md border border-border/80 shadow-lg rounded-xl p-1.5 animate-in fade-in-50 duration-100 select-none">
         <ContextMenuItem
@@ -1961,4 +2261,3 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
     </ContextMenu>
   );
 }
-import { Image as ImageIcon } from "@phosphor-icons/react";

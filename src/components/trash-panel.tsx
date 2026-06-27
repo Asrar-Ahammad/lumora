@@ -349,7 +349,7 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
             <button
               onClick={() => setEmptyDialogOpen(true)}
               disabled={actionLoading === "empty"}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-2 text-white dark:bg-red-800 text-sm font-medium rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50 dark:hover:bg-red-500/90 cursor-pointer"
             >
               <TrashSimple size={16} weight="fill" />
               {actionLoading === "empty" ? "Emptying…" : "Empty Trash"}

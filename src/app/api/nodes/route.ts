@@ -3,121 +3,94 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { unstable_cache, revalidateTag } from "next/cache";
 
-const getCachedNodes = (userId: string, category: string | null, parentId: string | null) => {
-  return unstable_cache(
-    async () => {
-      if (category) {
-        if (category === "documents") {
-          return await prisma.node.findMany({
-            where: {
-              userId,
-              type: "FILE",
-              trashedAt: null,
-              NOT: [
-                { mimeType: { startsWith: "image/" } },
-                { mimeType: { startsWith: "video/" } },
-                { mimeType: { startsWith: "audio/" } },
-              ],
-            },
-            orderBy: { createdAt: "desc" },
-          });
-        } else if (category === "photos" || category === "media") {
-          return await prisma.node.findMany({
-            where: {
-              userId,
-              type: "FILE",
-              trashedAt: null,
-              mimeType: { startsWith: "image/" },
-            },
-            orderBy: { createdAt: "desc" },
-          });
-        } else if (category === "videos") {
-          return await prisma.node.findMany({
-            where: {
-              userId,
-              type: "FILE",
-              trashedAt: null,
-              mimeType: { startsWith: "video/" },
-            },
-            orderBy: { createdAt: "desc" },
-          });
-        } else if (category === "audio") {
-          return await prisma.node.findMany({
-            where: {
-              userId,
-              type: "FILE",
-              trashedAt: null,
-              mimeType: { startsWith: "audio/" },
-            },
-            orderBy: { createdAt: "desc" },
-          });
-        } else {
-          // all files/folders (excluding trash)
-          return await prisma.node.findMany({
-            where: { userId, trashedAt: null },
-            orderBy: { createdAt: "desc" },
-          });
-        }
-      } else if (parentId) {
-        return await prisma.node.findMany({
-          where: {
-            userId,
-            parentId,
-            trashedAt: null,
-          },
-          orderBy: { createdAt: "desc" },
-        });
-      }
-      return [];
-    },
-    ["user-nodes", userId, category || "", parentId || ""],
-    {
-      tags: [`user-nodes-${userId}`],
-      revalidate: 3600,
-    }
-  )();
-};
-
-const getCachedFolders = (userId: string) => {
-  return unstable_cache(
-    async () => {
-      return await prisma.node.findMany({
-        where: {
-          userId,
-          type: "FOLDER",
-          trashedAt: null,
-        },
-      });
-    },
-    ["user-folders", userId],
-    {
-      tags: [`user-nodes-${userId}`],
-      revalidate: 3600,
-    }
-  )();
-};
-
-const getCachedFiles = (userId: string) => {
-  return unstable_cache(
-    async () => {
+const getNodes = async (userId: string, category: string | null, parentId: string | null) => {
+  if (category) {
+    if (category === "documents") {
       return await prisma.node.findMany({
         where: {
           userId,
           type: "FILE",
           trashedAt: null,
+          NOT: [
+            { mimeType: { startsWith: "image/" } },
+            { mimeType: { startsWith: "video/" } },
+            { mimeType: { startsWith: "audio/" } },
+          ],
         },
-        select: {
-          parentId: true,
-          sizeBytes: true,
-        },
+        orderBy: { createdAt: "desc" },
       });
-    },
-    ["user-files", userId],
-    {
-      tags: [`user-nodes-${userId}`],
-      revalidate: 3600,
+    } else if (category === "photos" || category === "media") {
+      return await prisma.node.findMany({
+        where: {
+          userId,
+          type: "FILE",
+          trashedAt: null,
+          mimeType: { startsWith: "image/" },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    } else if (category === "videos") {
+      return await prisma.node.findMany({
+        where: {
+          userId,
+          type: "FILE",
+          trashedAt: null,
+          mimeType: { startsWith: "video/" },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    } else if (category === "audio") {
+      return await prisma.node.findMany({
+        where: {
+          userId,
+          type: "FILE",
+          trashedAt: null,
+          mimeType: { startsWith: "audio/" },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    } else {
+      // all files/folders (excluding trash)
+      return await prisma.node.findMany({
+        where: { userId, trashedAt: null },
+        orderBy: { createdAt: "desc" },
+      });
     }
-  )();
+  } else if (parentId) {
+    return await prisma.node.findMany({
+      where: {
+        userId,
+        parentId,
+        trashedAt: null,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+  return [];
+};
+
+const getFolders = async (userId: string) => {
+  return await prisma.node.findMany({
+    where: {
+      userId,
+      type: "FOLDER",
+      trashedAt: null,
+    },
+  });
+};
+
+const getFiles = async (userId: string) => {
+  return await prisma.node.findMany({
+    where: {
+      userId,
+      type: "FILE",
+      trashedAt: null,
+    },
+    select: {
+      parentId: true,
+      sizeBytes: true,
+    },
+  });
 };
 
 export async function GET(req: Request) {
@@ -135,9 +108,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing parentId or category" }, { status: 400 });
     }
 
-    const nodes = await getCachedNodes(userId, category, parentId);
-    const folders = await getCachedFolders(userId);
-    const files = await getCachedFiles(userId);
+    const nodes = await getNodes(userId, category, parentId);
+    const folders = await getFolders(userId);
+    const files = await getFiles(userId);
 
     // Compute folder sizes recursively
     const folderSizes = new Map<string, bigint>();

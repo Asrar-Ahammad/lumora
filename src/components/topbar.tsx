@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react";
-import { Gear, Sun, Moon, UploadIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { Gear, Sun, Moon, UploadIcon, MagnifyingGlassIcon, ListIcon } from "@phosphor-icons/react";
 import { UserButton } from "@clerk/nextjs";
 import { useTheme } from "next-themes";
 import { flushSync } from "react-dom";
@@ -11,9 +11,10 @@ interface TopbarProps {
   setQuery: (q: string) => void;
   onUploadClick: () => void;
   onSettingsClick: () => void;
+  onMenuClick?: () => void;
 }
 
-export function Topbar({ query, setQuery, onUploadClick, onSettingsClick }: TopbarProps) {
+export function Topbar({ query, setQuery, onUploadClick, onSettingsClick, onMenuClick }: TopbarProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
 
@@ -76,9 +77,18 @@ export function Topbar({ query, setQuery, onUploadClick, onSettingsClick }: Topb
   };
 
   return (
-    <header className="h-[72px] flex items-center justify-between px-4 md:px-6 bg-background sticky top-0 z-10">
-      <div className="flex-1 max-w-3xl flex items-center gap-4">
-        {/* Mobile menu could go here */}
+    <header className="h-[60px] md:h-[72px] flex items-center justify-between px-3 md:px-6 bg-background sticky top-0 z-10 gap-2">
+      <div className="flex-1 max-w-3xl flex items-center gap-2 md:gap-4">
+        {/* Mobile hamburger menu */}
+        {onMenuClick && (
+          <button
+            onClick={onMenuClick}
+            className="md:hidden p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+            title="Open menu"
+          >
+            <ListIcon size={22} />
+          </button>
+        )}
         <div className="relative flex items-center w-full group">
           <div className="absolute left-4 text-muted-foreground group-focus-within:text-primary transition-colors">
             <MagnifyingGlassIcon size={20} />
@@ -87,12 +97,12 @@ export function Topbar({ query, setQuery, onUploadClick, onSettingsClick }: Topb
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search your secure files..."
-            className="w-full bg-muted/40 hover:bg-muted/60 focus:bg-background border border-neutral-300 dark:border-neutral-700 focus:border-border transition-colors rounded-full py-3.5 pl-12 pr-4 outline-none focus:ring-1 focus:ring-primary/30 text-foreground"
+            placeholder="Search"
+            className="w-full bg-muted/40 hover:bg-muted/60 focus:bg-background border border-neutral-300 dark:border-neutral-700 focus:border-border transition-colors rounded-full py-3 pl-12 pr-4 outline-none focus:ring-1 focus:ring-primary/30 text-foreground text-sm"
           />
         </div>
       </div>
-      <div className="flex items-center gap-2 md:gap-4 ml-4 text-muted-foreground">
+      <div className="flex items-center gap-1.5 md:gap-4 ml-2 md:ml-4 text-muted-foreground shrink-0">
         <button 
           onClick={onUploadClick} 
           className="p-2.5 bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 rounded-full transition-colors flex items-center gap-2 cursor-pointer"

@@ -15,38 +15,20 @@ const r2 = new S3Client({
 
 const TRASH_TTL_DAYS = 30;
 
-const getCachedTrashNodes = (userId: string) => {
-  return unstable_cache(
-    async () => {
-      return await prisma.node.findMany({
-        where: {
-          userId,
-          trashedAt: { not: null },
-        },
-        orderBy: { trashedAt: "desc" },
-      });
+const getTrashNodes = async (userId: string) => {
+  return await prisma.node.findMany({
+    where: {
+      userId,
+      trashedAt: { not: null },
     },
-    ["user-trash-nodes", userId],
-    {
-      tags: [`user-trash-${userId}`],
-      revalidate: 3600,
-    }
-  )();
+    orderBy: { trashedAt: "desc" },
+  });
 };
 
-const getCachedTrashFolders = (userId: string) => {
-  return unstable_cache(
-    async () => {
-      return await prisma.node.findMany({
-        where: { userId, type: "FOLDER" },
-      });
-    },
-    ["user-trash-folders", userId],
-    {
-      tags: [`user-trash-${userId}`],
-      revalidate: 3600,
-    }
-  )();
+const getTrashFolders = async (userId: string) => {
+  return await prisma.node.findMany({
+    where: { userId, type: "FOLDER" },
+  });
 };
 
 // GET /api/nodes/trash - list all trashed nodes
@@ -92,10 +74,10 @@ export async function GET(req: Request) {
     }
 
     // Fetch remaining trashed nodes
-    const trashedNodes = await getCachedTrashNodes(userId);
+    const trashedNodes = await getTrashNodes(userId);
 
     // Fetch all folders (including trashed ones) for key cascade decryption
-    const folders = await getCachedTrashFolders(userId);
+    const folders = await getTrashFolders(userId);
 
     const serialized = trashedNodes.map((n) => ({
       ...n,

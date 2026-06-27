@@ -4,7 +4,7 @@ import * as React from "react";
 import { 
   Folder, FileText, Star, Video, Archive, HardDrive, 
   Image as ImageIcon, MusicNote, Trash, CaretLeft, CaretRight,
-  Cloud, ShieldCheck
+  Cloud, ShieldCheck, X
 } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
 
@@ -23,6 +23,8 @@ interface SidebarProps {
   setWidth: (width: number) => void;
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean) => void;
+  isMobileOpen?: boolean;
+  setIsMobileOpen?: (open: boolean) => void;
 }
 
 export function Sidebar({ 
@@ -34,7 +36,9 @@ export function Sidebar({
   width,
   setWidth,
   isCollapsed,
-  setIsCollapsed
+  setIsCollapsed,
+  isMobileOpen,
+  setIsMobileOpen
 }: SidebarProps) {
   // Format total storage used
   const formatStorage = (bytes: number) => {
@@ -69,10 +73,12 @@ export function Sidebar({
   };
 
   return (
-    <aside 
-      className="hidden md:flex flex-col h-screen bg-background border-r border-border relative select-none flex-shrink-0 transition-all duration-300 ease-out"
-      style={{ width: isCollapsed ? 72 : width }}
-    >
+    <>
+      {/* Desktop sidebar */}
+      <aside 
+        className="hidden md:flex flex-col h-screen bg-background border-r border-border relative select-none flex-shrink-0 transition-all duration-300 ease-out"
+        style={{ width: isCollapsed ? 72 : width }}
+      >
       {/* Header Block */}
       <div className={`p-6 pb-2 flex items-center justify-between gap-3 ${isCollapsed ? "px-2 py-4 flex-col gap-4" : ""}`}>
         <div className="flex items-center gap-3 overflow-hidden">
@@ -85,7 +91,7 @@ export function Sidebar({
         {/* Collapse toggle button */}
         <button 
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors border border-border bg-card flex-shrink-0"
+          className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors border border-border bg-card shrink-0 cursor-pointer"
           title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {isCollapsed ? <CaretRight size={16} /> : <CaretLeft size={16} />}
@@ -99,8 +105,8 @@ export function Sidebar({
             onClick={() => setActiveCategory("drive")}
             className={`flex items-center transition-colors font-medium ${
               isCollapsed
-                ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "drive" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`
-                : `w-full justify-start gap-4 px-4 py-2.5 rounded-full ${activeCategory === "drive" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`
+                ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "drive" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                : `w-full justify-start gap-4 px-4 py-2.5 rounded-full ${activeCategory === "drive" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
             }`}
             title={isCollapsed ? "My Drive" : undefined}
           >
@@ -164,8 +170,8 @@ export function Sidebar({
                 onClick={() => setActiveCategory("trash")}
                 className={`flex items-center transition-colors relative font-medium ${
                   isCollapsed
-                    ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "trash" ? "bg-destructive/10 text-destructive" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`
-                    : `w-full gap-4 px-4 py-2.5 rounded-full ${activeCategory === "trash" ? "bg-destructive/10 text-destructive" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`
+                    ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "trash" ? "bg-destructive/10 text-destructive" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                    : `w-full gap-4 px-4 py-2.5 rounded-full ${activeCategory === "trash" ? "bg-destructive/10 text-destructive" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
                 }`}
                 title={isCollapsed ? "Trash" : undefined}
               >
@@ -194,8 +200,8 @@ export function Sidebar({
                 onClick={() => setActiveCategory("storage")}
                 className={`flex items-center transition-colors relative font-medium ${
                   isCollapsed
-                    ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "storage" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`
-                    : `w-full gap-4 px-4 py-2.5 rounded-full ${activeCategory === "storage" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`
+                    ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "storage" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                    : `w-full gap-4 px-4 py-2.5 rounded-full ${activeCategory === "storage" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
                 }`}
                 title={isCollapsed ? "Storage" : undefined}
               >
@@ -294,6 +300,107 @@ export function Sidebar({
         />
       )}
     </aside>
+
+      {/* Mobile sidebar overlay */}
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsMobileOpen?.(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-[280px] bg-background flex flex-col h-full overflow-y-auto animate-in slide-in-from-left duration-200 shadow-2xl">
+            {/* Header */}
+            <div className="p-6 pb-2 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 overflow-hidden">
+                <div className="bg-primary text-primary-foreground p-1.5 rounded-full shadow-sm flex-shrink-0">
+                  <HardDrive weight="fill" size={24} />
+                </div>
+                <h1 className="text-xl font-medium tracking-tight truncate select-none">Lumora</h1>
+              </div>
+              <button 
+                onClick={() => setIsMobileOpen?.(false)}
+                className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors border border-border bg-card shrink-0 cursor-pointer"
+                title="Close menu"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Nav */}
+            <nav className="flex-1 px-3 mt-4 overflow-y-auto space-y-6">
+              <div>
+                <button 
+                  onClick={() => setActiveCategory("drive")}
+                  className={`flex items-center w-full justify-start gap-4 px-4 py-2.5 rounded-full transition-colors font-medium ${
+                    activeCategory === "drive" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"
+                  }`}
+                >
+                  <HardDrive size={22} weight={activeCategory === "drive" ? "fill" : "regular"} className="flex-shrink-0" />
+                  <span className="truncate">My Drive</span>
+                </button>
+              </div>
+
+              <div>
+                <h3 className="px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 select-none">Categories</h3>
+                <ul className="space-y-1">
+                  <NavItem icon={<FileText size={22} />} label="Documents" active={activeCategory === "documents"} onClick={() => setActiveCategory("documents")} isCollapsed={false} />
+                  <NavItem icon={<ImageIcon size={22} />} label="Photos" active={activeCategory === "photos" || activeCategory === "media"} onClick={() => setActiveCategory("photos")} isCollapsed={false} />
+                  <NavItem icon={<Video size={22} />} label="Videos" active={activeCategory === "videos"} onClick={() => setActiveCategory("videos")} isCollapsed={false} />
+                  <NavItem icon={<MusicNote size={22} />} label="Audio" active={activeCategory === "audio"} onClick={() => setActiveCategory("audio")} isCollapsed={false} />
+                  <NavItem icon={<Archive size={22} />} label="Archive" active={activeCategory === "archive"} onClick={() => setActiveCategory("archive")} isCollapsed={false} />
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 select-none">Other</h3>
+                <ul className="space-y-1">
+                  <li>
+                    <button
+                      onClick={() => setActiveCategory("trash")}
+                      className={`flex items-center w-full gap-4 px-4 py-2.5 rounded-full transition-colors font-medium ${
+                        activeCategory === "trash" ? "bg-destructive/10 text-destructive" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"
+                      }`}
+                    >
+                      <Trash size={22} weight={activeCategory === "trash" ? "fill" : "regular"} className={`flex-shrink-0 ${activeCategory === "trash" ? "text-destructive" : ""}`} />
+                      <span className="flex-1 text-left truncate">Trash</span>
+                      {trashCount > 0 && (
+                        <Badge variant={activeCategory === "trash" ? "destructive" : "secondary"} className="text-[10px] h-5 min-w-[20px] px-1.5 font-semibold">
+                          {trashCount > 99 ? "99+" : trashCount}
+                        </Badge>
+                      )}
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => setActiveCategory("storage")}
+                      className={`flex items-center w-full gap-4 px-4 py-2.5 rounded-full transition-colors font-medium ${
+                        activeCategory === "storage" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"
+                      }`}
+                    >
+                      <Cloud size={22} weight={activeCategory === "storage" ? "fill" : "regular"} className={`flex-shrink-0 ${activeCategory === "storage" ? "text-primary" : ""}`} />
+                      <span className="flex-1 text-left truncate">Storage</span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </nav>
+
+            {/* Storage indicator */}
+            <div 
+              onClick={() => setActiveCategory("storage")}
+              className={`p-6 mt-auto border-t border-border bg-muted/10 flex-shrink-0 cursor-pointer hover:bg-muted/20 transition-colors ${
+                activeCategory === "storage" ? "bg-muted/30" : ""
+              }`}
+            >
+              <div className="flex justify-between text-xs font-medium text-foreground mb-1.5 select-none">
+                <span>Storage</span>
+                <span>{formatStorage(totalSizeBytes)} of 15 GB</span>
+              </div>
+              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mb-2">
+                <div className="h-full bg-primary transition-all duration-500" style={{ width: `${percentUsed}%` }} />
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -312,8 +419,8 @@ function NavItem({ icon, label, active, onClick, isCollapsed }: NavItemProps) {
         onClick={onClick}
         className={`flex items-center rounded-full font-medium transition-colors ${
           isCollapsed 
-            ? `justify-center w-11 h-11 mx-auto ${active ? "bg-muted/85 text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`
-            : `justify-start w-full gap-4 px-4 py-2.5 ${active ? "bg-muted/85 text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`
+            ? `justify-center w-11 h-11 mx-auto ${active ? "bg-muted/85 text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+            : `justify-start w-full gap-4 px-4 py-2.5 ${active ? "bg-muted/85 text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
         }`}
         title={isCollapsed ? label : undefined}
       >

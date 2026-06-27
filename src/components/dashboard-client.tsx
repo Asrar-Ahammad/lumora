@@ -13,7 +13,7 @@ import { decryptText, generateNodeKey, encryptText, encryptNodeKey } from "@/lib
 import { 
   FolderPlus, GridNine, List, Info, ShieldCheck, Folder, 
   FileText, Calendar, HardDrive, MagnifyingGlass, CloudArrowUp,
-  Question, CheckCircle, XCircle
+  Question, CheckCircle, XCircle, X
 } from "@phosphor-icons/react";
 import { useUser } from "@clerk/nextjs";
 import { useToast } from "@/hooks/use-toast";
@@ -62,10 +62,15 @@ export function DashboardClient() {
 
   // UI state
   const [viewMode, setViewMode] = React.useState<"grid" | "list">("list");
+  React.useEffect(() => {
+    const saved = localStorage.getItem("lumora-view-mode");
+    if (saved === "grid" || saved === "list") setViewMode(saved);
+  }, []);
   const [selectedNode, setSelectedNode] = React.useState<SelectedNodeData | null>(null);
   const [isInfoPanelOpen, setIsInfoPanelOpen] = React.useState(false);
   const [sidebarWidth, setSidebarWidth] = React.useState(280);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false);
   const [decryptedCaption, setDecryptedCaption] = React.useState<string | null>(null);
   const [decryptingCaption, setDecryptingCaption] = React.useState(false);
   const [showFolderModal, setShowFolderModal] = React.useState(false);
@@ -135,13 +140,19 @@ export function DashboardClient() {
   };
 
   // 1. Initialize Root Folder once crypto is ready
+  const rootInitialized = React.useRef(false);
   React.useEffect(() => {
     if (!isReady || !cryptoKey) return;
+    if (rootInitialized.current) return; // Already initialized
 
     async function initRoot() {
       if (!cryptoKey) return;
       try {
         const res = await fetch("/api/nodes/root");
+        if (!res.ok) {
+          console.error("Root fetch failed with status", res.status);
+          return;
+        }
         const { rootNode } = await res.json();
 
         if (!rootNode) {
@@ -156,6 +167,7 @@ export function DashboardClient() {
             body: JSON.stringify({ nameEnc, nameIV, nodeKeyEnc, nodeKeyIV }),
           });
           const created = await createRes.json();
+          rootInitialized.current = true;
           setCurrentFolderId(created.rootNode.id);
           setCurrentFolderKey(rootKey);
           setBreadcrumbs([{ id: created.rootNode.id, name: "Root" }]);
@@ -163,6 +175,7 @@ export function DashboardClient() {
           // Decrypt root key cascade
           const emptyAncestors = new Map();
           const rootKey = await decryptNodeKeyCascade(rootNode, emptyAncestors);
+          rootInitialized.current = true;
           setCurrentFolderId(rootNode.id);
           setCurrentFolderKey(rootKey);
           setBreadcrumbs([{ id: rootNode.id, name: "Root" }]);
@@ -481,6 +494,7 @@ export function DashboardClient() {
           setActiveCategory(cat);
           setQuery("");
           setSelectedNode(null);
+          setIsMobileSidebarOpen(false);
         }} 
         totalSizeBytes={allNodesCountSize.size}
         trashCount={trashCount}
@@ -489,6 +503,8 @@ export function DashboardClient() {
         setWidth={setSidebarWidth}
         isCollapsed={isSidebarCollapsed}
         setIsCollapsed={setIsSidebarCollapsed}
+        isMobileOpen={isMobileSidebarOpen}
+        setIsMobileOpen={setIsMobileSidebarOpen}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar 
@@ -496,6 +512,7 @@ export function DashboardClient() {
           setQuery={setQuery} 
           onUploadClick={() => setIsUploadOpen(true)} 
           onSettingsClick={() => setIsSettingsOpen(true)}
+          onMenuClick={() => setIsMobileSidebarOpen(true)}
         />
         
         {isAISearch && (
@@ -529,11 +546,11 @@ export function DashboardClient() {
             <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col">
 
               {/* Folder explorer header & actions */}
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-4 md:mb-6 gap-2">
                 {/* Breadcrumbs */}
-                <div className="flex items-center gap-1.5 flex-wrap text-sm font-medium">
+                <div className="flex items-center gap-1 md:gap-1.5 flex-wrap text-xs md:text-sm font-medium min-w-0">
                   {activeCategory !== "drive" ? (
-                    <span className="text-foreground capitalize text-lg font-semibold tracking-tight">
+                    <span className="text-foreground capitalize text-base md:text-lg font-semibold tracking-tight">
                       {activeCategory}
                     </span>
                   ) : (
@@ -542,7 +559,7 @@ export function DashboardClient() {
                         {idx > 0 && <span className="text-muted-foreground">/</span>}
                         <button
                           onClick={() => handleBreadcrumbClick(crumb.id, idx)}
-                          className={`hover:text-primary transition-colors text-lg font-semibold tracking-tight select-none ${
+                          className={`hover:text-primary transition-colors text-base md:text-lg font-semibold tracking-tight select-none truncate max-w-[120px] md:max-w-none ${
                             idx === breadcrumbs.length - 1 ? "text-foreground cursor-default" : "text-muted-foreground cursor-pointer"
                           }`}
                           disabled={idx === breadcrumbs.length - 1}
@@ -559,32 +576,32 @@ export function DashboardClient() {
                   {activeCategory === "drive" && !query.trim() && currentFolderId && (
                     <button
                       onClick={() => setShowFolderModal(true)}
-                      className="p-2 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg border border-border flex items-center gap-1.5 transition-all text-xs font-medium bg-card"
+                      className="p-2 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg border border-border flex items-center gap-1.5 transition-all text-xs font-medium bg-card cursor-pointer"
                     >
                       <FolderPlus size={18} />
-                      New Folder
+                      <span className="hidden sm:inline">New Folder</span>
                     </button>
                   )}
 
                   <div className="h-8 w-[1px] bg-border mx-1" />
 
                   <button
-                    onClick={() => setViewMode("list")}
+                    onClick={() => { setViewMode("list"); localStorage.setItem("lumora-view-mode", "list"); }}
                     className={`p-2 rounded-lg transition-colors border ${
                       viewMode === "list"
-                        ? "bg-muted text-foreground border-border"
-                        : "text-muted-foreground hover:bg-muted border-transparent"
+                        ? "bg-muted text-foreground border-border cursor-pointer"
+                        : "text-muted-foreground hover:bg-muted border-transparent cursor-pointer"
                     }`}
                     title="List view"
                   >
                     <List size={18} />
                   </button>
                   <button
-                    onClick={() => setViewMode("grid")}
+                    onClick={() => { setViewMode("grid"); localStorage.setItem("lumora-view-mode", "grid"); }}
                     className={`p-2 rounded-lg transition-colors border ${
                       viewMode === "grid"
-                        ? "bg-muted text-foreground border-border"
-                        : "text-muted-foreground hover:bg-muted border-transparent"
+                        ? "bg-muted text-foreground border-border cursor-pointer"
+                        : "text-muted-foreground hover:bg-muted border-transparent cursor-pointer"
                     }`}
                     title="Grid view"
                   >
@@ -621,7 +638,7 @@ export function DashboardClient() {
           </div>
           )} {/* end activeCategory !== "trash" */}
 
-          {/* Collapsible right-hand detail panel – hidden on trash tab */}
+          {/* Collapsible right-hand detail panel – desktop */}
           {selectedNode && isInfoPanelOpen && activeCategory !== "trash" && (
             <aside className="w-[320px] border-l border-border bg-card/50 hidden lg:flex flex-col h-full overflow-y-auto animate-in slide-in-from-right duration-200">
               <div className="p-5 border-b border-border flex items-center justify-between bg-card">
@@ -631,7 +648,7 @@ export function DashboardClient() {
                 </h3>
                 <button 
                   onClick={() => setIsInfoPanelOpen(false)}
-                  className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded-full transition-colors"
+                  className="p-1 hover:bg-muted text-muted-foreground hover:text-foreground rounded-full transition-colors cursor-pointer"
                 >
                   Close
                 </button>
@@ -715,6 +732,94 @@ export function DashboardClient() {
                 )}
               </div>
             </aside>
+          )}
+
+          {/* Mobile info panel overlay */}
+          {selectedNode && isInfoPanelOpen && activeCategory !== "trash" && (
+            <div className="fixed inset-0 z-50 lg:hidden">
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsInfoPanelOpen(false)} />
+              <aside className="absolute right-0 top-0 bottom-0 w-[85vw] max-w-[360px] bg-card flex flex-col h-full overflow-y-auto animate-in slide-in-from-right duration-200 shadow-2xl">
+                <div className="p-5 border-b border-border flex items-center justify-between bg-card">
+                  <h3 className="font-semibold text-foreground flex items-center gap-2 text-sm">
+                    <Info size={18} />
+                    Item Details
+                  </h3>
+                  <button 
+                    onClick={() => setIsInfoPanelOpen(false)}
+                    className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-full transition-colors cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  <div className="text-center pb-4 border-b border-border">
+                    <div className="p-4 bg-muted rounded-xl inline-block mb-3 text-primary/80">
+                      {selectedNode.type === "FOLDER" ? (
+                        <Folder size={36} weight="fill" className="text-yellow-500" />
+                      ) : (
+                        <FileText size={36} />
+                      )}
+                    </div>
+                    <h4 className="font-medium text-foreground text-sm truncate max-w-full px-2 select-none" title={selectedNode.name}>
+                      {selectedNode.name}
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-1 capitalize">{selectedNode.type.toLowerCase()}</p>
+                  </div>
+
+                  <div className="space-y-4 text-xs">
+                    <div className="flex justify-between py-1 border-b border-border/50">
+                      <span className="text-muted-foreground">Encryption</span>
+                      <span className="text-foreground font-semibold flex items-center gap-1">
+                        <ShieldCheck size={14} className="text-primary" />
+                        End-to-End Encrypted
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-border/50">
+                      <span className="text-muted-foreground font-medium">
+                        {selectedNode.type === "FOLDER" ? "Folder Size" : "File Size"}
+                      </span>
+                      <span className="text-foreground font-medium">
+                        {formatSize(selectedNode.sizeBytes ? parseInt(selectedNode.sizeBytes) : 0)}
+                      </span>
+                    </div>
+                    {selectedNode.type === "FILE" && (
+                      <div className="flex justify-between py-1 border-b border-border/50">
+                        <span className="text-muted-foreground">File Type</span>
+                        <span className="text-foreground font-medium truncate max-w-[150px]" title={selectedNode.mimeType || ""}>
+                          {selectedNode.mimeType || "—"}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-1 border-b border-border/50">
+                      <span className="text-muted-foreground">Uploaded At</span>
+                      <span className="text-foreground font-medium flex items-center gap-1">
+                        <Calendar size={13} />
+                        {new Date(selectedNode.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {selectedNode.type === "FILE" && (
+                    <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
+                      <div className="flex items-center justify-between mb-2">
+                        <h5 className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                          <ShieldCheck size={14} />
+                          Smart AI Description
+                        </h5>
+                      </div>
+                      {decryptingCaption ? (
+                        <p className="text-[11px] text-muted-foreground animate-pulse">Decrypting description...</p>
+                      ) : decryptedCaption ? (
+                        <p className="text-[11px] text-muted-foreground leading-relaxed italic">{decryptedCaption}</p>
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground leading-relaxed italic">No description available for this file.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </aside>
+            </div>
           )}
         </main>
       </div>

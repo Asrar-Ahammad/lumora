@@ -7,6 +7,10 @@ import {
   FileText, File, ArrowLeft 
 } from "@phosphor-icons/react"
 import { decryptFile } from "@/lib/crypto"
+import dynamic from "next/dynamic"
+
+const PdfViewer = dynamic(() => import("./pdf-viewer"), { ssr: false })
+const DocViewerWrapper = dynamic(() => import("./doc-viewer-wrapper"), { ssr: false })
 
 interface FileViewerProps {
   isOpen: boolean;
@@ -17,8 +21,9 @@ interface FileViewerProps {
     mimeType: string;
     url: string;
     sizeBytes: string;
+    fileIv?: string;
   };
-  nodeKey: CryptoKey;
+  nodeKey?: CryptoKey | null;
 }
 
 export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) {
@@ -42,6 +47,8 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
     if (!isOpen) return;
 
     let localBlobUrl: string | null = null;
+    let active = true;
+
     setLoading(true);
     setError(null);
     setTextContent(null);
@@ -53,29 +60,8 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
 
     async function loadAndDecrypt() {
       try {
-        // Wait, where is the fileIv stored? In our Node schema, file Iv is stored inside the nameEnc/metadataEnc?
-        // Wait! In the upload zone, where is the file's unique IV stored?
-        // Ah! In our schema we didn't add a separate `fileIV` column!
-        // But wait! We can store the file IV inside the database, or in the encrypted metadata captionEnc? No!
-        // Wait, if the file is encrypted, the IV is needed to decrypt it.
-        // Let's check where the IV was stored in the original flat Media table.
-        // It was stored inside the `metadataEnc` JSON blob:
-        // `const { encryptedMeta, iv: metaIv } = await encryptMetadata({ filename: file.name, fileIv }, cryptoKey);`
-        // Then `fileIv` is read from `metadataEnc` after decrypting it!
-        // Oh! That is perfect!
-        // In our `Node` model, we have `nameEnc` and `nameIV`. We can store both the filename AND the file IV (and size, lastModified) inside `nameEnc` as a JSON string!
-        // For example, when creating a File Node:
-        // nameEnc contains the encrypted JSON string: `JSON.stringify({ name: file.name, fileIv: fileIv, lastModified: file.lastModified })`.
-        // This is extremely secure! The server only sees `nameEnc` and `nameIV`, and doesn't know the file name nor the file IV! Only the client can decrypt `nameEnc` to get both the name and the file IV!
-        // That is an outstanding, zero-knowledge design!
-        // Let's see: yes, the client will decrypt `nameEnc` to get the metadata object which has the `fileIv`!
-        // So `node` passed here will contain `name`, `mimeType`, `url`, `sizeBytes`, and `fileIv`.
-        // Let's retrieve `fileIv` from the node object (or pass it as an argument). Yes, let's assume `node` has `fileIv` (retrieved by decrypting `nameEnc`).
-        // Let's verify: yes, the parent component will decrypt `nameEnc` and pass `node.fileIv` to the viewer!
-        // Let's check how the parent component will decrypt it. We'll write that logic shortly.
-        
-        const fileIv = (node as any).fileIv;
-        if (!fileIv) throw new Error("Missing file IV for decryption");
+        const fileIv = node.fileIv;
+        if (!nodeKey || !fileIv) throw new Error("Missing decryption keys");
 
         const res = await fetch(node.url);
         if (!res.ok) throw new Error("Failed to fetch encrypted file");
@@ -83,6 +69,8 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
         const encryptedBuffer = await res.arrayBuffer();
         const decryptedBlob = await decryptFile(encryptedBuffer, nodeKey, fileIv);
         
+        if (!active) return;
+
         localBlobUrl = URL.createObjectURL(decryptedBlob);
         setBlobUrl(localBlobUrl);
 
@@ -106,20 +94,30 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
         }
       } catch (err: any) {
         console.error(err);
-        setError(err.message || "Decryption failed");
+        if (active) setError(err.message || "Decryption failed");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
     loadAndDecrypt();
-
     return () => {
+      active = false;
       if (localBlobUrl) {
         URL.revokeObjectURL(localBlobUrl);
       }
     };
   }, [isOpen, node, nodeKey]);
+
+  const handleDownload = () => {
+    if (!blobUrl) return;
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = node.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   if (!isOpen) return null;
 
@@ -134,19 +132,19 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
             transform: `scale(${scale}) rotate(${rotate}deg)`,
             transition: "transform 0.2s ease" 
           }}
-          className="max-h-[70vh] max-w-full object-contain rounded-lg shadow-md"
+          className="max-h-[78vh] max-w-full object-contain rounded-lg shadow-md"
         />
         {/* Controls */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-4 text-white text-sm shadow-lg border border-white/10 z-10">
-          <button onClick={() => setScale(s => Math.max(0.5, s - 0.25))} className="hover:text-primary transition-colors">
+          <button onClick={() => setScale(s => Math.max(0.5, s - 0.25))} className="hover:text-primary transition-colors cursor-pointer">
             <MagnifyingGlassMinus size={20} />
           </button>
           <span className="font-mono min-w-[3rem] text-center">{Math.round(scale * 100)}%</span>
-          <button onClick={() => setScale(s => Math.min(3, s + 0.25))} className="hover:text-primary transition-colors">
+          <button onClick={() => setScale(s => Math.min(3, s + 0.25))} className="hover:text-primary transition-colors cursor-pointer">
             <MagnifyingGlassPlus size={20} />
           </button>
           <div className="w-[1px] h-4 bg-white/20" />
-          <button onClick={() => setRotate(r => (r + 90) % 360)} className="hover:text-primary transition-colors">
+          <button onClick={() => setRotate(r => (r + 90) % 360)} className="hover:text-primary transition-colors cursor-pointer">
             <ArrowClockwise size={20} />
           </button>
         </div>
@@ -157,7 +155,7 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
   const renderVideo = () => {
     return (
       <div className="flex-1 flex items-center justify-center p-4 bg-black rounded-lg overflow-hidden">
-        <video src={blobUrl!} controls autoPlay className="max-h-[70vh] max-w-full rounded-lg" />
+        <video src={blobUrl!} controls autoPlay className="max-h-[78vh] max-w-full rounded-lg" />
       </div>
     )
   }
@@ -228,7 +226,7 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
           <div className="flex items-center justify-center gap-4">
             <button 
               onClick={toggleAudio}
-              className="bg-primary text-primary-foreground p-3 rounded-full hover:scale-105 transition-transform flex items-center justify-center"
+              className="bg-primary text-primary-foreground p-3 rounded-full hover:scale-105 transition-transform flex items-center justify-center cursor-pointer"
             >
               {audioPlaying ? <Pause size={20} weight="fill" /> : <Play size={20} weight="fill" />}
             </button>
@@ -240,15 +238,13 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
 
   const renderPdf = () => {
     return (
-      <div className="flex-1 flex flex-col h-[70vh] rounded-lg overflow-hidden border border-border">
-        <iframe src={blobUrl!} className="w-full h-full border-none" title={node.name} />
-      </div>
+      <PdfViewer blobUrl={blobUrl!} name={node.name} />
     )
   }
 
   const renderText = () => {
     return (
-      <div className="flex-1 flex flex-col h-[70vh] rounded-lg overflow-hidden border border-border bg-muted/10 font-mono text-sm shadow-inner p-4 overflow-y-auto">
+      <div className="flex-1 flex flex-col h-full rounded-lg overflow-hidden border border-border bg-muted/10 font-mono text-sm shadow-inner p-4 overflow-y-auto">
         <pre className="text-foreground leading-relaxed whitespace-pre-wrap">{textContent}</pre>
       </div>
     )
@@ -260,7 +256,7 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
     const rows = csvData.slice(1);
 
     return (
-      <div className="flex-1 flex flex-col h-[70vh] rounded-lg overflow-hidden border border-border bg-card shadow-inner overflow-auto">
+      <div className="flex-1 flex flex-col h-full rounded-lg overflow-hidden border border-border bg-card shadow-inner overflow-auto">
         <table className="w-full border-collapse text-sm text-left">
           <thead className="bg-muted text-muted-foreground sticky top-0 border-b border-border">
             <tr>
@@ -284,16 +280,20 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
   }
 
   const renderDefault = () => {
-    const handleDownload = () => {
-      if (!blobUrl) return;
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = node.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    };
-
+    if (blobUrl) {
+      // Get file extension for fileType hint
+      const ext = node.name.split(".").pop()?.toLowerCase();
+      return (
+        <div className="flex-1 flex flex-col h-full rounded-lg overflow-hidden border border-border bg-card">
+          <DocViewerWrapper 
+            blobUrl={blobUrl} 
+            fileName={node.name} 
+            fileType={ext}
+            onDownload={handleDownload}
+          />
+        </div>
+      )
+    }
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 bg-card rounded-lg border border-border min-h-[300px]">
         <div className="p-6 bg-muted text-muted-foreground rounded-full mb-6">
@@ -303,7 +303,7 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
         <p className="text-sm text-muted-foreground mb-6">No preview available for this file type</p>
         <button 
           onClick={handleDownload}
-          className="bg-primary text-primary-foreground hover:bg-primary/95 px-6 py-2.5 rounded-lg font-medium shadow transition-colors flex items-center gap-2"
+          className="bg-primary text-primary-foreground hover:bg-primary/95 px-6 py-2.5 rounded-lg font-medium shadow transition-colors flex items-center gap-2 cursor-pointer"
         >
           <Download size={18} />
           Decrypt & Download
@@ -344,14 +344,14 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 md:p-6 lg:p-8">
-      <div className="bg-background border border-border shadow-2xl rounded-2xl w-full max-w-5xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="bg-background border border-border shadow-2xl rounded-2xl w-[90vw] max-w-[90vw] h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
           <div className="flex items-center gap-3 min-w-0">
             <button 
               onClick={onClose}
-              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-colors"
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-colors cursor-pointer"
             >
               <ArrowLeft size={20} />
             </button>
@@ -366,18 +366,17 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
           </div>
           <div className="flex items-center gap-2">
             {blobUrl && !loading && !error && (
-              <a 
-                href={blobUrl} 
-                download={node.name}
-                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-colors"
+              <button 
+                onClick={handleDownload}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-colors cursor-pointer"
                 title="Save decrypted copy"
               >
                 <Download size={20} />
-              </a>
+              </button>
             )}
             <button 
               onClick={onClose}
-              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-colors"
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-colors cursor-pointer"
             >
               <X size={20} />
             </button>
