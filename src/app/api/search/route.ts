@@ -38,13 +38,13 @@ export async function GET(req: Request) {
       },
     });
 
-    const serializedResults = (results as any[]).map((r) => ({
+    const serializedResults = (results as any[]).map((r: any) => ({
       ...r,
       sizeBytes: r.sizeBytes ? r.sizeBytes.toString() : null,
       url: r.r2Key ? `/api/media/download?key=${encodeURIComponent(r.r2Key)}` : null,
     }));
 
-    const serializedFolders = folders.map((f) => ({
+    const serializedFolders = folders.map((f: any) => ({
       ...f,
       sizeBytes: f.sizeBytes ? f.sizeBytes.toString() : null,
     }));
