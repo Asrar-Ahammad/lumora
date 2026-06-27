@@ -1,0 +1,59 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+model User {
+  id        String   @id // Clerk userId
+  aiSearch  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  nodes     Node[]
+}
+
+model Node {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  parentId     String?
+  parent       Node?    @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children     Node[]   @relation("FolderHierarchy")
+  
+  type         NodeType // FOLDER or FILE
+  mimeType     String?
+  sizeBytes    BigInt?
+  
+  // E2E encrypted name & metadata
+  nameEnc      String
+  nameIV       String
+  
+  // Node's cryptographic key (AES-GCM key, encrypted with parent's node key or user's root key)
+  nodeKeyEnc   String
+  nodeKeyIV    String
+  
+  r2Key        String?  // R2 object key for files
+  
+  // AI Semantic search
+  captionEnc   String?  // E2E encrypted caption
+  captionIV    String?  // IV for encrypted caption
+  embedding    Unsupported("vector(1536)")?
+  aiProcessed  Boolean  @default(false)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  trashedAt    DateTime? // null = active, set = in trash
+
+  @@index([userId, parentId])
+  @@index([userId, type])
+  @@index([userId, trashedAt])
+}
+
+enum NodeType {
+  FOLDER
+  FILE
+}
+
