@@ -57,6 +57,17 @@ export function DashboardClient() {
     }
   }, [isUserLoaded, user, toast]);
 
+  // Prevent default browser context menu globally so only custom menus appear
+  React.useEffect(() => {
+    const handleGlobalContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    document.addEventListener("contextmenu", handleGlobalContextMenu);
+    return () => {
+      document.removeEventListener("contextmenu", handleGlobalContextMenu);
+    };
+  }, []);
+
   const [activeCategory, setActiveCategory] = React.useState("drive");
   const [currentFolderId, setCurrentFolderId] = React.useState<string | null>(null);
   const [currentFolderKey, setCurrentFolderKey] = React.useState<CryptoKey | null>(null);
@@ -77,6 +88,7 @@ export function DashboardClient() {
   const [decryptingCaption, setDecryptingCaption] = React.useState(false);
   const [showFolderModal, setShowFolderModal] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState("");
+  const [isCreatingFolder, setIsCreatingFolder] = React.useState(false);
 
   // Search & Filter state
   const [query, setQuery] = React.useState("");
@@ -522,8 +534,9 @@ export function DashboardClient() {
 
   // Create folder
   const handleCreateFolder = async () => {
-    if (!newFolderName.trim() || !currentFolderId || !currentFolderKey) return;
+    if (!newFolderName.trim() || !currentFolderId || !currentFolderKey || isCreatingFolder) return;
 
+    setIsCreatingFolder(true);
     try {
       const folderKey = await generateNodeKey();
       const { cipherText: nameEnc, iv: nameIV } = await encryptText(newFolderName, folderKey);
@@ -579,6 +592,8 @@ export function DashboardClient() {
         description: "An unexpected error occurred.",
         variant: "destructive",
       });
+    } finally {
+      setIsCreatingFolder(false);
     }
   };
 
@@ -594,25 +609,84 @@ export function DashboardClient() {
 
   if (!isUserLoaded || !isReady || !currentFolderId || !currentFolderKey) {
     return (
-      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-6 max-w-sm px-6 text-center">
-          {/* Glowing Animated Circular Spinner */}
-          <div className="relative w-16 h-16">
-            <div className="absolute inset-0 rounded-full border-4 border-primary/10" />
-            <div className="absolute inset-0 rounded-full border-4 border-t-primary border-r-transparent border-b-transparent border-l-transparent animate-spin" />
-            {/* Inner pulsing glow circle */}
-            <div className="absolute inset-3 rounded-full bg-primary/5 animate-pulse" />
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background overflow-hidden">
+        {/* Subtle radial background glow */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-primary/[0.03] blur-[100px]" />
+        </div>
+
+        <div className="relative flex flex-col items-center gap-8 max-w-sm px-6 text-center z-10">
+          {/* Animated logo mark with orbiting ring */}
+          <div className="relative w-20 h-20">
+            {/* Outer orbiting ring */}
+            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 80 80" style={{ animation: "lumora-orbit 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite" }}>
+              <circle cx="40" cy="40" r="36" fill="none" stroke="hsl(var(--primary))" strokeWidth="2" strokeLinecap="round" strokeDasharray="60 166" opacity="0.6" />
+            </svg>
+            {/* Secondary ring counter-rotating */}
+            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 80 80" style={{ animation: "lumora-orbit 3.6s cubic-bezier(0.4, 0, 0.2, 1) infinite reverse" }}>
+              <circle cx="40" cy="40" r="28" fill="none" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="30 146" opacity="0.25" />
+            </svg>
+            {/* Center shield / lock icon */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div style={{ animation: "lumora-breathe 2s ease-in-out infinite" }}>
+                <ShieldCheck size={28} weight="duotone" className="text-primary" />
+              </div>
+            </div>
           </div>
-          
-          <div className="space-y-2 animate-pulse">
-            <h2 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-primary via-primary/80 to-purple-500 bg-clip-text text-transparent select-none">
+
+          {/* Brand name with shimmer */}
+          <div className="space-y-3">
+            <h2
+              className="text-3xl font-bold tracking-tight select-none"
+              style={{
+                background: "linear-gradient(110deg, hsl(var(--primary)) 0%, hsl(var(--primary)/0.6) 40%, hsl(var(--primary)) 50%, hsl(var(--primary)/0.6) 60%, hsl(var(--primary)) 100%)",
+                backgroundSize: "200% 100%",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                animation: "lumora-shimmer 2.5s ease-in-out infinite",
+              }}
+            >
               Lumora
             </h2>
-            <p className="text-xs text-muted-foreground font-medium">
-              Initializing secure E2EE environment...
+            <p className="text-xs text-muted-foreground/70 font-medium tracking-wide">
+              Preparing your secure vault
             </p>
           </div>
+
+          {/* Staggered loading dots */}
+          <div className="flex items-center gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-1.5 h-1.5 rounded-full bg-primary/60"
+                style={{
+                  animation: "lumora-dot 1.4s ease-in-out infinite",
+                  animationDelay: `${i * 0.2}s`,
+                }}
+              />
+            ))}
+          </div>
         </div>
+
+        {/* Inline keyframes */}
+        <style>{`
+          @keyframes lumora-orbit {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          @keyframes lumora-breathe {
+            0%, 100% { transform: scale(1); opacity: 0.85; }
+            50% { transform: scale(1.08); opacity: 1; }
+          }
+          @keyframes lumora-shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+          }
+          @keyframes lumora-dot {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
+            40% { transform: scale(1.2); opacity: 1; }
+          }
+        `}</style>
       </div>
     );
   }
@@ -699,22 +773,59 @@ export function DashboardClient() {
                     <span className="text-foreground capitalize text-base md:text-lg font-semibold tracking-tight">
                       {activeCategory}
                     </span>
-                  ) : (
-                    breadcrumbs.map((crumb, idx) => (
-                      <React.Fragment key={crumb.id}>
-                        {idx > 0 && <span className="text-muted-foreground">/</span>}
-                        <button
-                          onClick={() => handleBreadcrumbClick(crumb.id, idx)}
-                          className={`hover:text-primary transition-colors text-base md:text-lg font-semibold tracking-tight select-none truncate max-w-[120px] md:max-w-none ${
-                            idx === breadcrumbs.length - 1 ? "text-foreground cursor-default" : "text-muted-foreground cursor-pointer"
-                          }`}
-                          disabled={idx === breadcrumbs.length - 1}
-                        >
-                          {crumb.name}
-                        </button>
-                      </React.Fragment>
-                    ))
-                  )}
+                  ) : (() => {
+                    // Collapse middle breadcrumbs when > 3 levels deep
+                    const MAX_VISIBLE = 3; // first + last 2
+                    const shouldCollapse = breadcrumbs.length > MAX_VISIBLE;
+                    const visibleCrumbs = shouldCollapse
+                      ? [
+                          breadcrumbs[0],
+                          ...breadcrumbs.slice(-2),
+                        ]
+                      : breadcrumbs;
+
+                    return visibleCrumbs.map((crumb, visIdx) => {
+                      // Map visible index back to real index for click handler
+                      let realIdx: number;
+                      if (!shouldCollapse) {
+                        realIdx = visIdx;
+                      } else if (visIdx === 0) {
+                        realIdx = 0;
+                      } else {
+                        realIdx = breadcrumbs.length - 2 + (visIdx - 1);
+                      }
+                      const isLast = realIdx === breadcrumbs.length - 1;
+
+                      return (
+                        <React.Fragment key={crumb.id}>
+                          {visIdx > 0 && <span className="text-muted-foreground/50 select-none">/</span>}
+                          {/* Ellipsis for collapsed middle segments */}
+                          {shouldCollapse && visIdx === 1 && (
+                            <>
+                              <button
+                                onClick={() => handleBreadcrumbClick(breadcrumbs[1].id, 1)}
+                                className="text-muted-foreground hover:text-primary transition-colors text-base md:text-lg font-semibold tracking-tight select-none cursor-pointer px-0.5"
+                                title={breadcrumbs.slice(1, -2).map(b => b.name).join(" / ")}
+                              >
+                                …
+                              </button>
+                              <span className="text-muted-foreground/50 select-none">/</span>
+                            </>
+                          )}
+                          <button
+                            onClick={() => handleBreadcrumbClick(crumb.id, realIdx)}
+                            className={`hover:text-primary transition-colors text-base md:text-lg font-semibold tracking-tight select-none truncate max-w-[120px] md:max-w-[200px] ${
+                              isLast ? "text-foreground cursor-default" : "text-muted-foreground cursor-pointer"
+                            }`}
+                            disabled={isLast}
+                            title={crumb.name}
+                          >
+                            {crumb.name}
+                          </button>
+                        </React.Fragment>
+                      );
+                    });
+                  })()}
                 </div>
 
                 {/* Grid/List toggles & Folder Actions */}
@@ -1032,22 +1143,31 @@ export function DashboardClient() {
               placeholder="Folder Name"
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
-              className="w-full bg-muted border border-border rounded-lg px-4 py-2.5 outline-none focus:border-primary text-sm text-foreground mb-6"
+              disabled={isCreatingFolder}
+              className="w-full bg-muted border border-border rounded-lg px-4 py-2.5 outline-none focus:border-primary text-sm text-foreground mb-6 disabled:opacity-50"
             />
 
             <div className="flex justify-end gap-3">
               <button 
                 onClick={() => { setShowFolderModal(false); setNewFolderName(""); }}
-                className="px-4 py-2 text-sm font-medium hover:bg-muted border border-border rounded-lg transition-colors"
+                disabled={isCreatingFolder}
+                className="px-4 py-2 text-sm font-medium hover:bg-muted border border-border rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
               >
                 Cancel
               </button>
               <button 
                 onClick={handleCreateFolder}
-                disabled={!newFolderName.trim()}
-                className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/95 disabled:opacity-50 rounded-lg shadow transition-colors"
+                disabled={!newFolderName.trim() || isCreatingFolder}
+                className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/95 disabled:opacity-50 rounded-lg shadow transition-colors flex items-center justify-center min-w-[100px] cursor-pointer"
               >
-                Create Folder
+                {isCreatingFolder ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Creating...
+                  </span>
+                ) : (
+                  "Create Folder"
+                )}
               </button>
             </div>
           </div>

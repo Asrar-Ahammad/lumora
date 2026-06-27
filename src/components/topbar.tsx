@@ -239,16 +239,7 @@ export function Topbar({
             <ListIcon size={22} />
           </button>
         )}
-        {/* Mobile search icon (only visible on mobile, triggers Universal Search dialog) */}
-        {onSearchClick && (
-          <button
-            onClick={onSearchClick}
-            className="md:hidden p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
-            title="Search files"
-          >
-            <MagnifyingGlassIcon size={22} />
-          </button>
-        )}
+
         <div ref={searchContainerRef} className="hidden md:flex relative items-center w-full group">
           <div className="absolute left-4 text-muted-foreground group-focus-within:text-primary transition-colors">
             <MagnifyingGlassIcon size={20} />
@@ -336,9 +327,19 @@ export function Topbar({
           <UploadIcon size={18} weight="bold" />
           <span className="hidden sm:inline text-sm font-medium pr-1">Upload</span>
         </button>
+        {/* Mobile search icon (next to profile photo on mobile) */}
+        {onSearchClick && (
+          <button
+            onClick={onSearchClick}
+            className="md:hidden p-2.5 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground cursor-pointer"
+            title="Search files"
+          >
+            <MagnifyingGlassIcon size={22} />
+          </button>
+        )}
         <button
           onClick={handleThemeToggle}
-          className="p-2.5 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground cursor-pointer"
+          className="hidden md:block p-2.5 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground cursor-pointer"
           title="Toggle theme"
         >
           {mounted && currentTheme === "dark" ? <Sun size={24} /> : <Moon size={24} />}

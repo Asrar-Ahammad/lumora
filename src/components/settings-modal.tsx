@@ -4,11 +4,14 @@ import * as React from "react"
 import { 
   X, ShieldCheck, Warning, Key, CaretRight, 
   ToggleLeft, ToggleRight, Gear, CheckCircle, XCircle,
-  Bell, BellSlash, DownloadSimple, Export, Plus, DeviceMobile
+  Bell, BellSlash, DownloadSimple, Export, Plus, DeviceMobile,
+  Sun, Moon
 } from "@phosphor-icons/react"
 import { useCrypto } from "./crypto-provider"
 import { useToast } from "@/hooks/use-toast"
 import { subscribeUser, unsubscribeUser, sendNotification } from "@/app/pwa-actions"
+import { useTheme } from "next-themes"
+import { flushSync } from "react-dom"
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -53,6 +56,15 @@ export function SettingsModal({
   const [isIOS, setIsIOS] = React.useState(false)
   const [isStandalone, setIsStandalone] = React.useState(false)
   const [deferredPrompt, setDeferredPrompt] = React.useState<any>(null)
+
+  // Theme
+  const { theme, setTheme, resolvedTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+  const currentTheme = theme === "system" ? resolvedTheme : theme
+
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Listen to beforeinstallprompt event
   React.useEffect(() => {
@@ -278,6 +290,80 @@ export function SettingsModal({
 
         {/* Body */}
         <div className="p-6 space-y-6 overflow-y-auto max-h-[70vh]">
+          {/* Section 0: Appearance */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Appearance</h3>
+
+            <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-border bg-card/50">
+              <div className="space-y-1">
+                <h4 className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                  {mounted && currentTheme === "dark" ? (
+                    <Moon size={16} className="text-primary" />
+                  ) : (
+                    <Sun size={16} className="text-primary" />
+                  )}
+                  Theme
+                </h4>
+                <p className="text-xs text-muted-foreground leading-relaxed pr-4">
+                  {mounted && currentTheme === "dark" ? "Dark mode is active. Switch to light mode for a brighter interface." : "Light mode is active. Switch to dark mode for a dimmer interface."}
+                </p>
+              </div>
+
+              <button
+                onClick={(e) => {
+                  const nextTheme = currentTheme === "dark" ? "light" : "dark";
+                  if (typeof document === "undefined" || !(document as any).startViewTransition) {
+                    setTheme(nextTheme);
+                    return;
+                  }
+                  const x = e.clientX;
+                  const y = e.clientY;
+                  const endRadius = Math.hypot(
+                    Math.max(x, window.innerWidth - x),
+                    Math.max(y, window.innerHeight - y)
+                  );
+                  document.documentElement.classList.add("theme-transitioning");
+                  if (nextTheme === "light") {
+                    document.documentElement.classList.add("transition-to-light");
+                  }
+                  const transition = (document as any).startViewTransition(() => {
+                    flushSync(() => {
+                      setTheme(nextTheme);
+                    });
+                  });
+                  transition.ready.then(() => {
+                    const isDark = nextTheme === "dark";
+                    const clipPath = isDark
+                      ? [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`]
+                      : [`circle(${endRadius}px at ${x}px ${y}px)`, `circle(0px at ${x}px ${y}px)`];
+                    document.documentElement.animate(
+                      { clipPath },
+                      {
+                        duration: 400,
+                        easing: "ease-in-out",
+                        fill: "forwards",
+                        pseudoElement: isDark ? "::view-transition-new(root)" : "::view-transition-old(root)",
+                      }
+                    );
+                  });
+                  transition.finished.finally(() => {
+                    document.documentElement.classList.remove("transition-to-light");
+                    document.documentElement.classList.remove("theme-transitioning");
+                  });
+                }}
+                className="text-primary hover:scale-105 active:scale-95 transition-all outline-none cursor-pointer"
+              >
+                {mounted && currentTheme === "dark" ? (
+                  <ToggleRight size={44} weight="fill" className="text-primary" />
+                ) : (
+                  <ToggleLeft size={44} weight="light" className="text-muted-foreground" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="h-[1px] bg-border" />
+
           {/* Section 1: Security & AI */}
           <div className="space-y-4">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">AI & Search Settings</h3>

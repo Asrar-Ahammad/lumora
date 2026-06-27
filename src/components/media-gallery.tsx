@@ -33,6 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { MobileDrawer } from "@/components/ui/mobile-drawer"
 import dynamic from "next/dynamic"
 
 const PdfThumbnail = dynamic(() => import("./pdf-thumbnail"), {
@@ -907,7 +908,8 @@ export function MediaGallery({
           onConfirm={handlePickerConfirm}
           currentNodeId={pickerNode?.id || null}
           currentNodeType={pickerNode?.type || null}
-          title={pickerAction === "move" ? "Move to..." : "Copy to..."}
+          currentNodeName={pickerNode?.name || null}
+          title={pickerAction === "move" ? "Move to" : "Copy to"}
           folders={pickerFolders}
           actionLoading={actionLoading}
         />
@@ -1147,6 +1149,44 @@ function MediaGalleryContent({
   };
 
   const [dropdownOpenId, setDropdownOpenId] = React.useState<string | null>(null);
+  const [dropdownPosition, setDropdownPosition] = React.useState<{ top: number; left: number } | null>(null);
+  const [mobileDrawerItem, setMobileDrawerItem] = React.useState<any | null>(null);
+
+  const handleOptionsClick = (item: any, trigger: HTMLElement) => {
+    if (window.innerWidth < 768) {
+      setMobileDrawerItem(item);
+    } else {
+      const rect = trigger.getBoundingClientRect();
+      const nextOpen = dropdownOpenId === item.id ? null : item.id;
+      setDropdownOpenId(nextOpen);
+
+      if (nextOpen) {
+        const hasPreview = item.type === "FILE" && item.nodeKey && item.fileIv;
+        const itemsCount = item.type === "FOLDER" ? 6 : (hasPreview ? 7 : 6);
+        const menuHeight = itemsCount * 32 + 14;
+
+        const shouldOpenUpward = window.innerHeight - rect.bottom < menuHeight;
+        const topPos = shouldOpenUpward
+          ? rect.top - menuHeight + window.scrollY
+          : rect.bottom + window.scrollY;
+
+        const leftPos = Math.max(
+          8,
+          Math.min(
+            rect.right - 176 + window.scrollX,
+            window.innerWidth - 176 - 8 + window.scrollX
+          )
+        );
+
+        setDropdownPosition({
+          top: topPos,
+          left: leftPos,
+        });
+      } else {
+        setDropdownPosition(null);
+      }
+    }
+  };
 
   React.useEffect(() => {
     if (!dropdownOpenId) return;
@@ -1194,9 +1234,8 @@ function MediaGalleryContent({
             setRenameNodeId={setRenameNodeId}
             onRenameSubmit={onRenameSubmit}
             onDownloadNode={onDownloadNode}
-            toggleStar={toggleStar}
-            dropdownOpenId={dropdownOpenId}
-            setDropdownOpenId={setDropdownOpenId}
+            onOptionsClick={handleOptionsClick}
+            isDropdownOpen={dropdownOpenId === item.id}
           />
         ))}
       </div>
@@ -1268,9 +1307,8 @@ function MediaGalleryContent({
                 onMoveNodeDirectly={onMoveNodeDirectly}
                 renameNodeId={renameNodeId}
                 setRenameNodeId={setRenameNodeId}
-                onRenameSubmit={onRenameSubmit}
-                dropdownOpenId={dropdownOpenId}
-                setDropdownOpenId={setDropdownOpenId}
+                onOptionsClick={handleOptionsClick}
+                isDropdownOpen={dropdownOpenId === item.id}
                 onDownloadNode={onDownloadNode}
                 toggleStar={toggleStar}
               />
@@ -1281,14 +1319,9 @@ function MediaGalleryContent({
     );
   };
 
-  const isMobileDevice = typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window));
-
-  if (isMobileDevice) {
+  const renderSharedControls = () => {
     return (
       <>
-        <div className="flex-1 w-full min-h-[450px]">
-          {renderContent()}
-        </div>
         {viewerNode && viewerKey && (
           <FileViewer
             isOpen={!!viewerNode}
@@ -1300,6 +1333,237 @@ function MediaGalleryContent({
             nodeKey={viewerKey}
           />
         )}
+
+        <MobileDrawer
+          isOpen={!!mobileDrawerItem}
+          onClose={() => setMobileDrawerItem(null)}
+          title={mobileDrawerItem?.name || "Actions"}
+        >
+          {mobileDrawerItem && (
+            <>
+              {/* ── Quick Actions ── */}
+              <p className="px-4 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">Quick Actions</p>
+              {mobileDrawerItem.type === "FOLDER" ? (
+                <button
+                  onClick={() => {
+                    const item = mobileDrawerItem;
+                    setMobileDrawerItem(null);
+                    onNavigate(item.id, item.name, item.nodeKey);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
+                >
+                  <FolderOpen size={18} />
+                  <span>Open Folder</span>
+                </button>
+              ) : (
+                mobileDrawerItem.nodeKey && mobileDrawerItem.fileIv && (
+                  <button
+                    onClick={() => {
+                      const item = mobileDrawerItem;
+                      setMobileDrawerItem(null);
+                      onOpenViewer(item, item.nodeKey!, item.name, item.fileIv!);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
+                  >
+                    <Eye size={18} />
+                    <span>Quick View</span>
+                  </button>
+                )
+              )}
+              <button
+                onClick={() => {
+                  const item = mobileDrawerItem;
+                  setMobileDrawerItem(null);
+                  toggleStar(item);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
+              >
+                <Star size={18} weight={mobileDrawerItem.starred ? "fill" : "regular"} className={mobileDrawerItem.starred ? "text-yellow-500" : ""} />
+                <span>{mobileDrawerItem.starred ? "Remove Star" : "Add to Starred"}</span>
+              </button>
+              <button
+                onClick={() => {
+                  const item = mobileDrawerItem;
+                  setMobileDrawerItem(null);
+                  onSelectNode(item, true);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
+              >
+                <Info size={18} />
+                <span>Item Details</span>
+              </button>
+
+              {/* ── Organize ── */}
+              <div className="h-px bg-border my-1.5" />
+              <p className="px-4 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">Organize</p>
+              <button
+                onClick={() => {
+                  const item = mobileDrawerItem;
+                  setMobileDrawerItem(null);
+                  onMoveTo(item);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
+              >
+                <ArrowSquareOut size={18} />
+                <span>Move to</span>
+              </button>
+              <button
+                onClick={() => {
+                  const item = mobileDrawerItem;
+                  setMobileDrawerItem(null);
+                  onCopyTo(item);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
+              >
+                <Copy size={18} />
+                <span>Copy to</span>
+              </button>
+              <button
+                onClick={() => {
+                  const item = mobileDrawerItem;
+                  setMobileDrawerItem(null);
+                  onRename(item);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
+              >
+                <PencilSimple size={18} />
+                <span>Rename</span>
+              </button>
+
+              {/* ── Danger Zone ── */}
+              <div className="h-px bg-border my-1.5" />
+              <p className="px-4 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-destructive/40 select-none">Danger Zone</p>
+              <button
+                onClick={(e) => {
+                  const item = mobileDrawerItem;
+                  setMobileDrawerItem(null);
+                  onDelete(item.id, e);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-destructive hover:bg-destructive/10 font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
+              >
+                <Trash size={18} />
+                <span>Move to Trash</span>
+              </button>
+            </>
+          )}
+        </MobileDrawer>
+
+        {dropdownOpenId && dropdownPosition && (() => {
+          const item = sortedItems.find((x: any) => x.id === dropdownOpenId);
+          if (!item) return null;
+          return createPortal(
+            <div
+              style={{
+                position: "absolute",
+                top: `${dropdownPosition.top}px`,
+                left: `${dropdownPosition.left}px`,
+              }}
+              className="w-44 rounded-xl border border-border bg-popover shadow-lg py-1.5 z-[9999] text-left text-xs animate-in fade-in-50 duration-100 select-none"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {item.type === "FOLDER" ? (
+                <button
+                  onClick={() => {
+                    setDropdownOpenId(null);
+                    onNavigate(item.id, item.name, item.nodeKey);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                >
+                  <FolderOpen size={15} />
+                  <span>Open</span>
+                </button>
+              ) : (
+                item.nodeKey && item.fileIv && (
+                  <button
+                    onClick={() => {
+                      setDropdownOpenId(null);
+                      onOpenViewer(item, item.nodeKey!, item.name, item.fileIv!);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+                  >
+                    <Eye size={15} />
+                    <span>Quick View</span>
+                  </button>
+                )
+              )}
+              <button
+                onClick={() => {
+                  setDropdownOpenId(null);
+                  toggleStar(item);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+              >
+                <Star size={15} weight={item.starred ? "fill" : "regular"} className={item.starred ? "text-yellow-500" : ""} />
+                <span>{item.starred ? "Remove Star" : "Add to Starred"}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setDropdownOpenId(null);
+                  onSelectNode(item, true);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+              >
+                <Info size={15} />
+                <span>Item Details</span>
+              </button>
+              <button
+                onClick={() => {
+                  setDropdownOpenId(null);
+                  onMoveTo(item);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+              >
+                <ArrowSquareOut size={15} />
+                <span>Move to</span>
+              </button>
+              <button
+                onClick={() => {
+                  setDropdownOpenId(null);
+                  onCopyTo(item);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+              >
+                <Copy size={15} />
+                <span>Copy to</span>
+              </button>
+              <button
+                onClick={() => {
+                  setDropdownOpenId(null);
+                  onRename(item);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+              >
+                <PencilSimple size={15} />
+                <span>Rename</span>
+              </button>
+              <div className="h-px bg-border my-1" />
+              <button
+                onClick={(e) => {
+                  setDropdownOpenId(null);
+                  onDelete(item.id, e);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-destructive hover:bg-destructive/10 font-medium text-left cursor-pointer"
+              >
+                <Trash size={15} />
+                <span>Move to Trash</span>
+              </button>
+            </div>,
+            document.body
+          );
+        })()}
+      </>
+    );
+  };
+
+  const isMobileDevice = typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window));
+
+  if (isMobileDevice) {
+    return (
+      <>
+        <div className="flex-1 w-full min-h-[450px]">
+          {renderContent()}
+        </div>
+        {renderSharedControls()}
       </>
     );
   }
@@ -1332,17 +1596,7 @@ function MediaGalleryContent({
         </ContextMenuContent>
       </ContextMenu>
 
-      {viewerNode && viewerKey && (
-        <FileViewer
-          isOpen={!!viewerNode}
-          onClose={() => {
-            setViewerNode(null);
-            setViewerKey(null);
-          }}
-          node={viewerNode}
-          nodeKey={viewerKey}
-        />
-      )}
+      {renderSharedControls()}
     </>
   );
 }
@@ -1475,9 +1729,8 @@ const getExtension = (name: string, type: string) => {
 };
 
 // GRID ITEM SUBCOMPONENT (Now takes pre-decrypted properties)
-function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar, dropdownOpenId, setDropdownOpenId }: any) {
+function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar, onOptionsClick, isDropdownOpen }: any) {
   const isSelected = item.id === selectedNodeId;
-  const [dropdownPosition, setDropdownPosition] = React.useState<{ top: number; left: number } | null>(null);
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [tempName, setTempName] = React.useState(getBaseName(item.name, item.type));
   const isSubmitting = React.useRef(false);
@@ -1838,138 +2091,15 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                const rect = e.currentTarget.getBoundingClientRect();
-                setDropdownOpenId(dropdownOpenId === item.id ? null : item.id);
-
-                const hasPreview = item.type === "FILE" && item.nodeKey && item.fileIv;
-                const itemsCount = item.type === "FOLDER" ? 6 : (hasPreview ? 7 : 6);
-                const menuHeight = itemsCount * 32 + 14;
-
-                const shouldOpenUpward = window.innerHeight - rect.bottom < menuHeight;
-                const topPos = shouldOpenUpward
-                  ? rect.top - menuHeight + window.scrollY
-                  : rect.bottom + window.scrollY;
-
-                const leftPos = Math.max(
-                  8,
-                  Math.min(
-                    rect.right - 176 + window.scrollX,
-                    window.innerWidth - 176 - 8 + window.scrollX
-                  )
-                );
-
-                setDropdownPosition({
-                  top: topPos,
-                  left: leftPos,
-                });
+                onOptionsClick(item, e.currentTarget);
               }}
               className={`p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer ${
-                dropdownOpenId === item.id ? "opacity-100 bg-muted/50" : "opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                isDropdownOpen ? "opacity-100 bg-muted/50" : "opacity-100 md:opacity-0 md:group-hover:opacity-100"
               }`}
               title="More actions"
             >
               <DotsThreeVertical size={18} weight="bold" />
             </button>
-
-            {dropdownOpenId === item.id && dropdownPosition && createPortal(
-              <div
-                style={{
-                  position: "absolute",
-                  top: `${dropdownPosition.top}px`,
-                  left: `${dropdownPosition.left}px`,
-                }}
-                className="w-44 rounded-xl border border-border bg-popover shadow-lg py-1.5 z-[9999] text-left text-xs animate-in fade-in-50 duration-100 select-none"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {item.type === "FOLDER" ? (
-                  <button
-                    onClick={() => {
-                      setDropdownOpenId(null);
-                      onNavigate(item.id, item.name, item.nodeKey);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                  >
-                    <FolderOpen size={15} />
-                    <span>Open</span>
-                  </button>
-                ) : (
-                  item.nodeKey && item.fileIv && (
-                    <button
-                      onClick={() => {
-                        setDropdownOpenId(null);
-                        onOpenViewer(item, item.nodeKey!, item.name, item.fileIv!);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                    >
-                      <Eye size={15} />
-                      <span>Quick View</span>
-                    </button>
-                  )
-                )}
-                <button
-                  onClick={() => {
-                    setDropdownOpenId(null);
-                    toggleStar(item);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                >
-                  <Star size={15} weight={item.starred ? "fill" : "regular"} className={item.starred ? "text-yellow-500" : ""} />
-                  <span>{item.starred ? "Remove Star" : "Add to Starred"}</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setDropdownOpenId(null);
-                    onSelect(item, true);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                >
-                  <Info size={15} />
-                  <span>Item Details</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setDropdownOpenId(null);
-                    onMoveTo(item);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                >
-                  <ArrowSquareOut size={15} />
-                  <span>Move to...</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setDropdownOpenId(null);
-                    onCopyTo(item);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                >
-                  <Copy size={15} />
-                  <span>Copy to...</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setDropdownOpenId(null);
-                    onRename(item);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                >
-                  <PencilSimple size={15} />
-                  <span>Rename</span>
-                </button>
-                <div className="h-px bg-border my-1" />
-                <button
-                  onClick={(e) => {
-                    setDropdownOpenId(null);
-                    onDelete(item.id, e);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-destructive hover:bg-destructive/10 font-medium text-left cursor-pointer"
-                >
-                  <Trash size={15} />
-                  <span>Move to Trash</span>
-                </button>
-              </div>,
-              document.body
-            )}
           </div>
         </div>
 
@@ -2016,14 +2146,14 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
         >
           <ArrowSquareOut size={16} />
-          <span>Move to...</span>
+          <span>Move to</span>
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onCopyTo(item)}
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
         >
           <Copy size={16} />
-          <span>Copy to...</span>
+          <span>Copy to</span>
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onRename(item)}
@@ -2046,9 +2176,8 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 }
 
 // LIST ITEM SUBCOMPONENT (Now takes pre-decrypted properties)
-function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, dropdownOpenId, setDropdownOpenId, onDownloadNode, toggleStar }: any) {
+function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onOptionsClick, isDropdownOpen, onDownloadNode, toggleStar }: any) {
   const isSelected = item.id === selectedNodeId;
-  const [dropdownPosition, setDropdownPosition] = React.useState<{ top: number; left: number } | null>(null);
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [tempName, setTempName] = React.useState(getBaseName(item.name, item.type));
   const isSubmitting = React.useRef(false);
@@ -2087,7 +2216,6 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 
 
   const handleClick = () => {
-    setDropdownOpenId(null);
     const isMobile = window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window);
     if (isMobile) {
       if (item.type === "FOLDER") {
@@ -2101,7 +2229,6 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
   };
 
   const handleDoubleClick = () => {
-    setDropdownOpenId(null);
     if (item.type === "FOLDER") {
       onNavigate(item.id, item.name, item.nodeKey);
     } else if (item.nodeKey && item.fileIv) {
@@ -2173,7 +2300,7 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
       onDrop={handleDrop}
       className={`cursor-pointer transition-colors group ${isDragOver ? "bg-primary/10 border-2 border-dashed border-primary animate-pulse" :
           isSelected ? "bg-primary/5 hover:bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"
-        } ${dropdownOpenId === item.id ? "relative z-30" : ""}`}
+        } ${isDropdownOpen ? "relative z-30" : ""}`}
     >
       <td className="px-6 py-3.5 w-full max-w-0">
         <div className="flex items-center gap-3 w-full min-w-0">
@@ -2285,137 +2412,15 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           <button
             onClick={(e) => {
               e.stopPropagation();
-              const rect = e.currentTarget.getBoundingClientRect();
-              setDropdownOpenId(dropdownOpenId === item.id ? null : item.id);
-
-              const hasPreview = item.type === "FILE" && item.nodeKey && item.fileIv;
-              const itemsCount = item.type === "FOLDER" ? 5 : (hasPreview ? 6 : 5);
-              const menuHeight = itemsCount * 32 + 14;
-
-              const shouldOpenUpward = window.innerHeight - rect.bottom < menuHeight;
-              const topPos = shouldOpenUpward
-                ? rect.top - menuHeight + window.scrollY
-                : rect.bottom + window.scrollY;
-
-              const leftPos = Math.max(
-                8,
-                Math.min(
-                  rect.right - 176 + window.scrollX,
-                  window.innerWidth - 176 - 8 + window.scrollX
-                )
-              );
-
-              setDropdownPosition({
-                top: topPos,
-                left: leftPos,
-              });
+              onOptionsClick(item, e.currentTarget);
             }}
-            className={`p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer ${dropdownOpenId === item.id ? "opacity-100" : "opacity-100 md:opacity-0 md:group-hover:opacity-100"
-              }`}
+            className={`p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer ${
+              isDropdownOpen ? "opacity-100 bg-muted/50" : "opacity-100 md:opacity-0 md:group-hover:opacity-100"
+            }`}
             title="More actions"
           >
             <DotsThreeVertical size={18} weight="bold" />
           </button>
-
-          {dropdownOpenId === item.id && dropdownPosition && createPortal(
-            <div
-              style={{
-                position: "absolute",
-                top: `${dropdownPosition.top}px`,
-                left: `${dropdownPosition.left}px`,
-              }}
-              className="w-44 rounded-xl border border-border bg-popover shadow-lg py-1.5 z-[9999] text-left text-xs animate-in fade-in-50 duration-100 select-none"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {item.type === "FOLDER" ? (
-                <button
-                  onClick={() => {
-                    setDropdownOpenId(null);
-                    onNavigate(item.id, item.name, item.nodeKey);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                >
-                  <FolderOpen size={15} />
-                  <span>Open</span>
-                </button>
-              ) : (
-                item.nodeKey && item.fileIv && (
-                  <button
-                    onClick={() => {
-                      setDropdownOpenId(null);
-                      onOpenViewer(item, item.nodeKey!, item.name, item.fileIv!);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                  >
-                    <Eye size={15} />
-                    <span>Quick View</span>
-                  </button>
-                )
-              )}
-              <button
-                onClick={() => {
-                  setDropdownOpenId(null);
-                  toggleStar(item);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-              >
-                <Star size={15} weight={item.starred ? "fill" : "regular"} className={item.starred ? "text-yellow-500" : ""} />
-                <span>{item.starred ? "Remove Star" : "Add to Starred"}</span>
-              </button>
-              <button
-                onClick={() => {
-                  setDropdownOpenId(null);
-                  onSelect(item, true);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-              >
-                <Info size={15} />
-                <span>Item Details</span>
-              </button>
-              <button
-                onClick={() => {
-                  setDropdownOpenId(null);
-                  onMoveTo(item);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-              >
-                <ArrowSquareOut size={15} />
-                <span>Move to...</span>
-              </button>
-              <button
-                onClick={() => {
-                  setDropdownOpenId(null);
-                  onCopyTo(item);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-              >
-                <Copy size={15} />
-                <span>Copy to...</span>
-              </button>
-              <button
-                onClick={() => {
-                  setDropdownOpenId(null);
-                  onRename(item);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-              >
-                <PencilSimple size={15} />
-                <span>Rename</span>
-              </button>
-              <div className="h-px bg-border my-1" />
-              <button
-                onClick={(e) => {
-                  setDropdownOpenId(null);
-                  onDelete(item.id, e);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-destructive hover:bg-destructive/10 font-medium text-left cursor-pointer"
-              >
-                <Trash size={15} />
-                <span>Move to Trash</span>
-              </button>
-            </div>,
-            document.body
-          )}
         </div>
       </td>
     </tr>
@@ -2426,13 +2431,7 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
   }
 
   return (
-    <ContextMenu
-      onOpenChange={(open) => {
-        if (open) {
-          setDropdownOpenId(null);
-        }
-      }}
-    >
+    <ContextMenu>
       <ContextMenuTrigger render={rowContent} />
 
       <ContextMenuContent className="w-48 bg-card/85 backdrop-blur-md border border-border/80 shadow-lg rounded-xl p-1.5 animate-in fade-in-50 duration-100 select-none">
@@ -2471,14 +2470,14 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
         >
           <ArrowSquareOut size={16} />
-          <span>Move to...</span>
+          <span>Move to</span>
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onCopyTo(item)}
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
         >
           <Copy size={16} />
-          <span>Copy to...</span>
+          <span>Copy to</span>
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onRename(item)}
