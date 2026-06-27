@@ -119,7 +119,7 @@ export async function GET(req: Request) {
       while (currentId) {
         const currentSize = folderSizes.get(currentId) || BigInt(0);
         folderSizes.set(currentId, currentSize + size);
-        const folder = folders.find((f) => f.id === currentId);
+        const folder = folders.find((f: any) => f.id === currentId);
         currentId = folder ? folder.parentId : null;
       }
     };
@@ -130,7 +130,7 @@ export async function GET(req: Request) {
       }
     }
 
-    const serializedNodes = nodes.map((n) => ({
+    const serializedNodes = nodes.map((n: any) => ({
       ...n,
       sizeBytes: n.type === "FOLDER"
         ? (folderSizes.get(n.id) || BigInt(0)).toString()
@@ -138,7 +138,7 @@ export async function GET(req: Request) {
       url: n.r2Key ? `/api/media/download?key=${encodeURIComponent(n.r2Key)}` : null,
     }));
 
-    const serializedFolders = folders.map((f) => ({
+    const serializedFolders = folders.map((f: any) => ({
       ...f,
       sizeBytes: (folderSizes.get(f.id) || BigInt(0)).toString(),
     }));
