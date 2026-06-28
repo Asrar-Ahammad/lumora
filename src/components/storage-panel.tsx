@@ -645,11 +645,11 @@ export function StoragePanel({
                 </div>
               </th>
               <th 
-                className="px-6 py-3.5 text-right w-[30%] cursor-pointer hover:bg-muted/60 transition-colors group/header"
+                className="px-6 py-3.5 text-right w-[30%] whitespace-nowrap cursor-pointer hover:bg-muted/60 transition-colors group/header"
                 onClick={() => handleSort("size")}
               >
                 <div className="flex items-center justify-end gap-1">
-                  <span>Storage used</span>
+                  <span>Size</span>
                   {sortKey === "size" ? (
                     sortDirection === "asc" ? <ArrowUp size={14} className="text-primary" /> : <ArrowDown size={14} className="text-primary" />
                   ) : (

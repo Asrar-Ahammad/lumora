@@ -438,20 +438,6 @@ export function Topbar({
             <MagnifyingGlassIcon size={22} />
           </button>
         )}
-        <button
-          onClick={handleThemeToggle}
-          className="hidden md:block p-2.5 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground cursor-pointer"
-          title="Toggle theme"
-        >
-          {mounted && currentTheme === "dark" ? <Sun size={24} /> : <Moon size={24} />}
-        </button>
-        <button
-          onClick={onSettingsClick}
-          className="hidden sm:block p-2.5 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground cursor-pointer"
-          title="Settings"
-        >
-          <Gear size={24} />
-        </button>
         <div className="w-8 h-8 rounded-full overflow-hidden bg-muted flex items-center justify-center ml-2">
           <UserButton />
         </div>

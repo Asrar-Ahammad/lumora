@@ -77,6 +77,7 @@ interface MediaGalleryProps {
   onRefresh: () => void;
   onTriggerUpload?: () => void;
   onTriggerCreateFolder?: () => void;
+  isInfoPanelOpen?: boolean;
 }
 
 export function MediaGallery({
@@ -92,7 +93,8 @@ export function MediaGallery({
   refreshTrigger,
   onRefresh,
   onTriggerUpload,
-  onTriggerCreateFolder
+  onTriggerCreateFolder,
+  isInfoPanelOpen
 }: MediaGalleryProps) {
   const { decryptNodeKeyCascade, cryptoKey, isReady } = useCrypto()
   const { toast } = useToast()
@@ -885,6 +887,7 @@ export function MediaGallery({
         onRenameSubmit={handleRenameSubmit}
         onDownloadNode={handleDownloadNode}
         toggleStar={handleToggleStar}
+        isInfoPanelOpen={isInfoPanelOpen}
       />
       {pickerOpen && (
         <DestinationPickerModal
@@ -1083,7 +1086,8 @@ function MediaGalleryContent({
   decryptedItems, loading, viewMode, activeCategory, onNavigate, onSelectNode, onCloseInfoPanel, selectedNodeId, onDelete, onOpenViewer,
   viewerNode, viewerKey, setViewerNode, setViewerKey, localQuery,
   onTriggerUpload, onTriggerCreateFolder, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly,
-  renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar
+  renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar,
+  isInfoPanelOpen
 }: any) {
   const [sortKey, setSortKey] = React.useState<"name" | "size" | "createdAt">("name");
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc");
@@ -1200,7 +1204,7 @@ function MediaGalleryContent({
     }
 
     return viewMode === "grid" ? (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "1rem" }}>
         {sortedItems.map((item: any) => (
           <GridItem
             key={item.id}

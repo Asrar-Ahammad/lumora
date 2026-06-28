@@ -336,7 +336,7 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-destructive/10 rounded-lg">
             <Trash size={22} weight="fill" className="text-destructive" />
@@ -357,7 +357,7 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
         </div>
 
         {decryptedItems.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between w-full md:justify-end gap-2">
             {/* View Mode Toggle */}
             <div className="flex bg-muted/50 p-1 rounded-lg border border-border">
               <button
@@ -462,10 +462,9 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
                 <th className="px-5 py-3.5 hidden sm:table-cell">Type</th>
                 <th className="px-5 py-3.5 hidden md:table-cell">Size</th>
                 <th className="px-5 py-3.5 hidden md:table-cell">Trashed On</th>
-                <th className="px-5 py-3.5">
+                <th className="px-5 py-3.5 whitespace-nowrap">
                   <span className="flex items-center gap-1">
-                    <Clock size={12} />
-                    Auto-Delete In
+                    Expires
                   </span>
                 </th>
                 <th className="px-5 py-3.5 text-right"></th>
@@ -549,9 +548,9 @@ function TrashRow({
         </td>
 
         {/* Auto-Delete countdown */}
-        <td className="px-5 py-3.5">
+        <td className="px-5 py-3.5 whitespace-nowrap">
           <span
-            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border whitespace-nowrap ${
               urgent
                 ? "bg-destructive/10 text-destructive border-destructive/20"
                 : "bg-muted text-muted-foreground border-transparent"

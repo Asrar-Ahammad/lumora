@@ -5,12 +5,14 @@ import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { UploadModal } from "./upload-modal";
 import { MediaGallery } from "./media-gallery";
-import { SettingsModal } from "./settings-modal";
+import { SettingsPanel } from "./settings-panel";
 import { TrashPanel } from "./trash-panel";
 import { StoragePanel } from "./storage-panel";
 import { useCrypto } from "./crypto-provider";
+import { useUpload } from "./upload-provider";
 import { decryptText, generateNodeKey, encryptText, encryptNodeKey } from "@/lib/crypto";
 import { FileViewer } from "./file-viewer";
+import { FilePreviewThumb } from "./file-preview-thumb";
 import { UniversalSearchDialog } from "./universal-search-dialog";
 import { 
   FolderPlus, GridNine, List, Info, ShieldCheck, Folder, 
@@ -37,6 +39,7 @@ type SelectedNodeData = {
 
 export function DashboardClient() {
   const { cryptoKey, decryptNodeKeyCascade, isReady, nodeKeysCache } = useCrypto();
+  const { addUploads } = useUpload();
   const { user, isLoaded: isUserLoaded } = useUser();
   const { toast } = useToast();
   React.useEffect(() => {
@@ -94,8 +97,7 @@ export function DashboardClient() {
   // Search & Filter state
   const [query, setQuery] = React.useState("");
   const [isAISearch, setIsAISearch] = React.useState(false); // E2EE semantic search setting
-  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
-
+  
   // Universal search & autocomplete index states
   const [isSearchDialogOpen, setIsSearchDialogOpen] = React.useState(false);
   const [decryptedSearchNodes, setDecryptedSearchNodes] = React.useState<any[]>([]);
@@ -138,6 +140,7 @@ export function DashboardClient() {
   const handleDashboardDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (activeCategory !== "drive") return;
     dashboardDragCounter.current++;
     if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
       const hasFiles = Array.from(e.dataTransfer.items).some(item => item.kind === 'file');
@@ -150,8 +153,10 @@ export function DashboardClient() {
   const handleDashboardDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (activeCategory !== "drive") return;
     dashboardDragCounter.current--;
-    if (dashboardDragCounter.current === 0) {
+    if (dashboardDragCounter.current <= 0) {
+      dashboardDragCounter.current = 0;
       setIsDashboardDragging(false);
     }
   };
@@ -164,13 +169,13 @@ export function DashboardClient() {
   const handleDashboardDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (activeCategory !== "drive") return;
     setIsDashboardDragging(false);
     dashboardDragCounter.current = 0;
 
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && currentFolderId && currentFolderKey) {
       const files = Array.from(e.dataTransfer.files);
-      setDraggedFiles(files);
-      setIsUploadOpen(true);
+      addUploads(files, currentFolderId, currentFolderKey, isAISearch);
     }
   };
 
@@ -658,14 +663,14 @@ export function DashboardClient() {
         setIsCollapsed={setIsSidebarCollapsed}
         isMobileOpen={isMobileSidebarOpen}
         setIsMobileOpen={setIsMobileSidebarOpen}
-        onSettingsClick={() => setIsSettingsOpen(true)}
+        onSettingsClick={() => setActiveCategory("settings")}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar 
           query={query} 
           setQuery={setQuery} 
           onUploadClick={() => setIsUploadOpen(true)} 
-          onSettingsClick={() => setIsSettingsOpen(true)}
+          onSettingsClick={() => setActiveCategory("settings")}
           onMenuClick={() => setIsMobileSidebarOpen(true)}
           onSearchClick={() => setIsSearchDialogOpen(true)}
           decryptedSearchNodes={decryptedSearchNodes}
@@ -687,7 +692,19 @@ export function DashboardClient() {
         )}
 
         <main className="flex-1 flex overflow-hidden">
-          {activeCategory === "trash" ? (
+          {activeCategory === "settings" ? (
+            <SettingsPanel 
+              aiSearchEnabled={isAISearch}
+              onToggleAISearch={async (enabled) => {
+                const res = await fetch("/api/user/settings", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ aiSearchEnabled: enabled }),
+                });
+                if (res.ok) setIsAISearch(enabled);
+              }}
+            />
+          ) : activeCategory === "trash" ? (
             /* Trash Panel – no extra padding, owns its own header */
             <TrashPanel
               refreshTrigger={refreshTrigger}
@@ -842,6 +859,7 @@ export function DashboardClient() {
                   onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
                   onTriggerUpload={() => setIsUploadOpen(true)}
                   onTriggerCreateFolder={() => setShowFolderModal(true)}
+                  isInfoPanelOpen={isInfoPanelOpen && !!selectedNode}
                 />
               </div>
             )}
@@ -867,13 +885,16 @@ export function DashboardClient() {
               <div className="p-6 space-y-6">
                 {/* Meta details */}
                 <div className="text-center pb-4 border-b border-border">
-                  <div className="p-4 bg-muted rounded-xl inline-block mb-3 text-primary/80">
-                    {selectedNode.type === "FOLDER" ? (
+                  {selectedNode.type === "FOLDER" ? (
+                    <div className="p-4 bg-muted rounded-xl inline-block mb-3 text-primary/80">
                       <Folder size={36} weight="fill" className="text-yellow-500" />
-                    ) : (
-                      <FileText size={36} />
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <FilePreviewThumb 
+                      node={selectedNode as any} 
+                      nodeKey={nodeKeysCache.current.get(selectedNode.id)} 
+                    />
+                  )}
                   <h4 className="font-medium text-foreground text-sm truncate max-w-full px-2 select-none" title={selectedNode.name}>
                     {selectedNode.name}
                   </h4>
@@ -973,13 +994,16 @@ export function DashboardClient() {
 
                 <div className="p-6 space-y-6">
                   <div className="text-center pb-4 border-b border-border">
-                    <div className="p-4 bg-muted rounded-xl inline-block mb-3 text-primary/80">
-                      {selectedNode.type === "FOLDER" ? (
+                    {selectedNode.type === "FOLDER" ? (
+                      <div className="p-4 bg-muted rounded-xl inline-block mb-3 text-primary/80">
                         <Folder size={36} weight="fill" className="text-yellow-500" />
-                      ) : (
-                        <FileText size={36} />
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <FilePreviewThumb 
+                        node={selectedNode as any} 
+                        nodeKey={nodeKeysCache.current.get(selectedNode.id)} 
+                      />
+                    )}
                     <h4 className="font-medium text-foreground text-sm truncate max-w-full px-2 select-none" title={selectedNode.name}>
                       {selectedNode.name}
                     </h4>
@@ -1127,13 +1151,6 @@ export function DashboardClient() {
         </div>
       )}
 
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        aiSearchEnabled={isAISearch}
-        onToggleAISearch={handleToggleAISearch}
-      />
 
       {/* Universal Search Dialog */}
       <UniversalSearchDialog

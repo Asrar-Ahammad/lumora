@@ -53,6 +53,42 @@ export function Sidebar({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  
+  const mobileNavRef = React.useRef<HTMLElement>(null);
+  const desktopNavRef = React.useRef<HTMLElement>(null);
+
+  React.useEffect(() => {
+    if (isMobileOpen && mobileNavRef.current) {
+      // Small timeout to allow DOM to render before scrolling
+      setTimeout(() => {
+        if (!mobileNavRef.current) return;
+        const activeElement = 
+          mobileNavRef.current.querySelector('.bg-primary\\/10') || 
+          mobileNavRef.current.querySelector('.bg-destructive\\/10');
+          
+        if (activeElement) {
+          activeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
+    }
+  }, [isMobileOpen, activeCategory]);
+
+  React.useEffect(() => {
+    // Desktop sidebar scroll into view
+    if (desktopNavRef.current) {
+      setTimeout(() => {
+        if (!desktopNavRef.current) return;
+        const activeElement = 
+          desktopNavRef.current.querySelector('.bg-primary\\/10') || 
+          desktopNavRef.current.querySelector('.bg-destructive\\/10');
+          
+        if (activeElement) {
+          activeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
+    }
+  }, [activeCategory]);
+
   const percentUsed = Math.min(100, (totalSizeBytes / (15 * 1024 * 1024 * 1024)) * 100);
 
   // Resize handler
@@ -117,7 +153,7 @@ export function Sidebar({
       </div>
 
       <TooltipProvider delay={200}>
-        <nav className={`flex-1 px-3 mt-4 overflow-y-auto space-y-6 ${isCollapsed ? "px-1.5" : ""}`}>
+        <nav ref={desktopNavRef} className={`flex-1 px-3 mt-4 overflow-y-auto space-y-6 pb-4 ${isCollapsed ? "px-1.5" : ""}`}>
         {/* Main Drive Links */}
         <div className="space-y-1">
           {/* My Drive Button */}
@@ -259,6 +295,26 @@ export function Sidebar({
                 "Storage"
               )}
             </li>
+            <li>
+              {renderTooltip(
+                <button
+                  onClick={() => onSettingsClick?.()}
+                  className={`flex items-center transition-colors relative font-medium ${
+                    isCollapsed
+                      ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "settings" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                      : `w-full gap-4 px-4 py-2.5 rounded-full ${activeCategory === "settings" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                  }`}
+                >
+                  <Gear
+                    size={22}
+                    weight={activeCategory === "settings" ? "fill" : "regular"}
+                    className={`flex-shrink-0 ${activeCategory === "settings" ? "text-primary" : ""}`}
+                  />
+                  {!isCollapsed && <span className="flex-1 text-left truncate">Settings</span>}
+                </button>,
+                "Settings"
+              )}
+            </li>
           </ul>
         </div>
       </nav>
@@ -352,7 +408,7 @@ export function Sidebar({
       {isMobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsMobileOpen?.(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-[280px] bg-background flex flex-col h-full overflow-y-auto animate-in slide-in-from-left duration-200 shadow-2xl">
+          <aside ref={mobileNavRef} className="absolute left-0 top-0 bottom-0 w-[280px] bg-background flex flex-col h-full overflow-y-auto animate-in slide-in-from-left duration-200 shadow-2xl">
             {/* Header */}
             <div className="p-6 pb-2 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 overflow-hidden">
@@ -371,7 +427,7 @@ export function Sidebar({
             </div>
 
             {/* Nav */}
-            <nav className="flex-1 px-3 mt-4 overflow-y-auto space-y-6">
+            <nav className="flex-1 px-3 mt-4 overflow-y-auto space-y-6 pb-6">
               <div className="space-y-1">
                 <button 
                   onClick={() => {
@@ -447,9 +503,11 @@ export function Sidebar({
                         onSettingsClick?.();
                         setIsMobileOpen?.(false);
                       }}
-                      className="flex items-center w-full gap-4 px-4 py-2.5 rounded-full transition-colors font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"
+                      className={`flex items-center w-full gap-4 px-4 py-2.5 rounded-full transition-colors font-medium ${
+                        activeCategory === "settings" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"
+                      }`}
                     >
-                      <Gear size={22} className="flex-shrink-0" />
+                      <Gear size={22} weight={activeCategory === "settings" ? "fill" : "regular"} className={`flex-shrink-0 ${activeCategory === "settings" ? "text-primary" : ""}`} />
                       <span className="flex-1 text-left truncate">Settings</span>
                     </button>
                   </li>

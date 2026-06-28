@@ -121,9 +121,11 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
   html {
     @apply font-sans;
   }
@@ -167,4 +169,16 @@
 .theme-transitioning *::after {
   transition: none !important;
   animation-duration: 0s !important;
+}
+
+/* Hide scrollbar globally for all elements */
+*::-webkit-scrollbar {
+  display: none;
+}
+
+* {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
 }
