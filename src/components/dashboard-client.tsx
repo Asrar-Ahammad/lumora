@@ -792,10 +792,19 @@ export function DashboardClient() {
             />
           ) : (
             /* File explorer main panel */
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col pb-28">
+            <div 
+              className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col pb-28"
+              onClick={() => {
+                setSelectedNode(null);
+                setIsInfoPanelOpen(false);
+              }}
+            >
 
               {/* Folder explorer header & actions */}
-              <div className="flex items-center justify-between mb-4 md:mb-6 gap-2">
+              <div 
+                className="flex items-center justify-between mb-4 md:mb-6 gap-2"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {/* Breadcrumbs */}
                 <div className="flex items-center gap-1 md:gap-1.5 flex-wrap text-xs md:text-sm font-medium min-w-0">
                   {activeCategory !== "drive" ? (

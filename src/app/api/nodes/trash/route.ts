@@ -86,6 +86,7 @@ export async function GET(req: Request) {
       deletesAt: n.trashedAt
         ? new Date(n.trashedAt.getTime() + TRASH_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
         : null,
+      url: n.r2Key ? `/api/media/download?key=${encodeURIComponent(n.r2Key)}` : null,
     }));
 
     const serializedFolders = folders.map((f: any) => ({

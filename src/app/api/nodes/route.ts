@@ -260,6 +260,10 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Node not found or unauthorized" }, { status: 404 });
     }
 
+    if (node.parentId === null) {
+      return NextResponse.json({ error: "Cannot delete the Root folder" }, { status: 400 });
+    }
+
     // Soft delete: set trashedAt timestamp (also cascade-soft-delete children)
     const now = new Date();
     await prisma.node.updateMany({

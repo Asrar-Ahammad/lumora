@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useCrypto } from "./crypto-provider"
 import { decryptText } from "@/lib/crypto"
+import { NodePreview } from "./node-preview"
 import {
   Trash,
   ArrowCounterClockwise,
@@ -18,6 +19,8 @@ import {
   Warning,
   CheckCircle,
   XCircle,
+  GridNine,
+  ListDashes,
 } from "@phosphor-icons/react"
 import { useToast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
@@ -66,7 +69,9 @@ type TrashedNode = {
 
 type DecryptedTrashedNode = TrashedNode & {
   name: string
+  fileIv: string | null
   nodeKey: CryptoKey | null
+  url?: string | null
 }
 
 interface TrashPanelProps {
@@ -125,7 +130,12 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
   const [loading, setLoading] = React.useState(true)
   const [actionLoading, setActionLoading] = React.useState<string | null>(null)
   const [emptyDialogOpen, setEmptyDialogOpen] = React.useState(false)
+  const [viewMode, setViewMode] = React.useState<"grid" | "list">("list")
 
+  React.useEffect(() => {
+    const saved = localStorage.getItem("lumora-view-mode") as "grid" | "list";
+    if (saved === "grid" || saved === "list") setViewMode(saved);
+  }, []);
   // ── Fetch trashed nodes ──────────────────────────────────────────────────
   const fetchTrash = React.useCallback(async () => {
     if (!isReady) return
@@ -164,18 +174,20 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
           const key = await decryptNodeKeyCascade(item, foldersMap)
           const decName = await decryptText(item.nameEnc, key, item.nameIV)
           let name = decName
+          let fileIv = null
           if (item.type === "FILE") {
             try {
               const parsed = JSON.parse(decName)
               name = parsed.name || parsed.filename || decName
+              fileIv = parsed.fileIv || null
             } catch {
               name = decName
             }
           }
-          list.push({ ...item, name, nodeKey: key })
+          list.push({ ...item, name, fileIv, nodeKey: key })
         } catch (err) {
           console.error("Decryption failed for trashed item", item.id, err)
-          list.push({ ...item, name: "Encrypted File", nodeKey: null })
+          list.push({ ...item, name: "Encrypted File", fileIv: null, nodeKey: null })
         }
       }
       if (active) setDecryptedItems(list)
@@ -345,7 +357,33 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
         </div>
 
         {decryptedItems.length > 0 && (
-          <>
+          <div className="flex items-center gap-2">
+            {/* View Mode Toggle */}
+            <div className="flex bg-muted/50 p-1 rounded-lg border border-border">
+              <button
+                onClick={() => { setViewMode("list"); localStorage.setItem("lumora-view-mode", "list"); }}
+                className={`p-1.5 rounded-md transition-colors ${
+                  viewMode === "list"
+                    ? "bg-card text-primary shadow-sm ring-1 ring-border"
+                    : "text-muted-foreground hover:bg-muted border-transparent cursor-pointer"
+                }`}
+                title="List view"
+              >
+                <ListDashes size={16} />
+              </button>
+              <button
+                onClick={() => { setViewMode("grid"); localStorage.setItem("lumora-view-mode", "grid"); }}
+                className={`p-1.5 rounded-md transition-colors ${
+                  viewMode === "grid"
+                    ? "bg-card text-primary shadow-sm ring-1 ring-border"
+                    : "text-muted-foreground hover:bg-muted border-transparent cursor-pointer"
+                }`}
+                title="Grid view"
+              >
+                <GridNine size={16} />
+              </button>
+            </div>
+
             <button
               onClick={() => setEmptyDialogOpen(true)}
               disabled={actionLoading === "empty"}
@@ -383,7 +421,7 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-          </>
+          </div>
         )}
       </div>
 
@@ -403,6 +441,18 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
         </div>
       ) : decryptedItems.length === 0 ? (
         <EmptyTrash />
+      ) : viewMode === "grid" ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {decryptedItems.map((item) => (
+            <TrashCard
+              key={item.id}
+              item={item}
+              actionLoading={actionLoading}
+              onRestore={handleRestore}
+              onDeleteForever={handleDeleteForever}
+            />
+          ))}
+        </div>
       ) : (
         <div className="border border-border rounded-xl bg-card overflow-hidden shadow-sm">
           <table className="w-full text-left border-collapse">
@@ -592,10 +642,156 @@ function TrashRow({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                setDeleteDialogOpen(false)
-                onDeleteForever(item.id)
-              }}
+              onClick={() => onDeleteForever(item.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Forever
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </ContextMenu>
+  )
+}
+
+// ── Trash Card ────────────────────────────────────────────────────────────────
+
+function TrashCard({
+  item,
+  actionLoading,
+  onRestore,
+  onDeleteForever,
+}: {
+  item: DecryptedTrashedNode
+  actionLoading: string | null
+  onRestore: (id: string) => void
+  onDeleteForever: (id: string) => void
+}) {
+  const { label, urgent } = getTimeLeft(item.deletesAt)
+  const isRestoring = actionLoading === item.id + "-restore"
+  const isDeleting = actionLoading === item.id + "-delete"
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        render={
+          <div className="group border rounded-2xl p-3 bg-card hover:shadow-md transition-all cursor-pointer flex flex-col gap-3 min-w-0 border-border hover:border-primary/50 relative" />
+        }
+      >
+        <div className="flex items-center justify-between gap-2 w-full min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="flex-shrink-0">
+              {item.type === "FOLDER" ? (
+                <Folder weight="fill" size={18} className="text-yellow-500" />
+              ) : (
+                <div className="scale-75 origin-left -mr-1">
+                  {getFileIcon(item.mimeType, item.name)}
+                </div>
+              )}
+            </div>
+            <span
+              className="text-sm font-medium text-foreground truncate select-none flex-1"
+              title={item.name}
+            >
+              {item.name}
+            </span>
+          </div>
+        </div>
+
+        {/* Middle Area: File Preview */}
+        <div className="flex-1 w-full bg-muted/20 rounded overflow-hidden flex items-center justify-center my-1 relative min-h-[96px]">
+          <NodePreview item={item} />
+        </div>
+
+        <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50">
+          <span
+            className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+              urgent
+                ? "bg-destructive/10 text-destructive border-destructive/20"
+                : "bg-muted text-muted-foreground border-transparent"
+            }`}
+          >
+            <Clock size={11} weight={urgent ? "fill" : "regular"} />
+            {label}
+          </span>
+          
+          <div className="flex items-center gap-1">
+            {/* Restore button */}
+            <Tooltip>
+              <TooltipTrigger
+                disabled={isRestoring || isDeleting}
+                onClick={() => onRestore(item.id)}
+                className="p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors disabled:opacity-40 cursor-pointer"
+                aria-label="Restore"
+              >
+                {isRestoring ? (
+                  <span className="inline-block w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <ArrowCounterClockwise size={14} weight="bold" />
+                )}
+              </TooltipTrigger>
+              <TooltipContent>Restore</TooltipContent>
+            </Tooltip>
+
+            {/* Delete Forever button */}
+            <Tooltip>
+              <TooltipTrigger
+                disabled={isRestoring || isDeleting}
+                onClick={() => setDeleteDialogOpen(true)}
+                className="p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40 cursor-pointer"
+                aria-label="Delete Forever"
+              >
+                {isDeleting ? (
+                  <span className="inline-block w-4 h-4 border-2 border-destructive border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <TrashSimple size={14} weight="bold" />
+                )}
+              </TooltipTrigger>
+              <TooltipContent>Delete Forever</TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+      </ContextMenuTrigger>
+
+      <ContextMenuContent className="w-48 bg-card/85 backdrop-blur-md border border-border/80 shadow-lg rounded-xl p-1.5 animate-in fade-in-50 duration-100 select-none">
+        <ContextMenuItem
+          disabled={isRestoring || isDeleting}
+          onClick={() => onRestore(item.id)}
+          className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
+        >
+          <ArrowCounterClockwise size={16} />
+          <span>Restore</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator className="-mx-1.5 my-1 h-px bg-border/50" />
+        <ContextMenuItem
+          disabled={isRestoring || isDeleting}
+          onClick={() => setDeleteDialogOpen(true)}
+          className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-destructive/10 hover:text-destructive text-destructive cursor-pointer transition-colors"
+        >
+          <TrashSimple size={16} />
+          <span>Delete Forever</span>
+        </ContextMenuItem>
+      </ContextMenuContent>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              <span className="flex items-center gap-2">
+                <Warning size={20} className="text-destructive" weight="fill" />
+                Delete Forever?
+              </span>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong className="text-foreground">{item.name}</strong>.
+              This action <strong className="text-destructive">cannot be undone</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => onDeleteForever(item.id)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete Forever

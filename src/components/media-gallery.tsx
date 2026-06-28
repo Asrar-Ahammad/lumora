@@ -23,6 +23,7 @@ import {
   ContextMenuSeparator,
 } from "@/components/ui/context-menu"
 import { DestinationPickerModal } from "./destination-picker-modal"
+import { NodePreview } from "./node-preview"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,22 +36,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { MobileDrawer } from "@/components/ui/mobile-drawer"
 import dynamic from "next/dynamic"
-
-const PdfThumbnail = dynamic(() => import("./pdf-thumbnail"), {
-  ssr: false, loading: () => (
-    <div className="w-full h-full flex items-center justify-center">
-      <span className="w-3 h-3 border-2 border-primary/40 border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
-});
-
-const DocThumbnail = dynamic(() => import("./doc-thumbnail"), {
-  ssr: false, loading: () => (
-    <div className="w-full h-full flex items-center justify-center">
-      <span className="w-3 h-3 border-2 border-primary/40 border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
-});
 
 type NodeData = {
   id: string;
@@ -1343,33 +1328,21 @@ function MediaGalleryContent({
             <>
               {/* ── Quick Actions ── */}
               <p className="px-4 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">Quick Actions</p>
-              {mobileDrawerItem.type === "FOLDER" ? (
-                <button
-                  onClick={() => {
-                    const item = mobileDrawerItem;
-                    setMobileDrawerItem(null);
-                    onNavigate(item.id, item.name, item.nodeKey);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
-                >
-                  <FolderOpen size={18} />
-                  <span>Open Folder</span>
-                </button>
-              ) : (
-                mobileDrawerItem.nodeKey && mobileDrawerItem.fileIv && (
-                  <button
-                    onClick={() => {
-                      const item = mobileDrawerItem;
-                      setMobileDrawerItem(null);
-                      onOpenViewer(item, item.nodeKey!, item.name, item.fileIv!);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
-                  >
-                    <Eye size={18} />
-                    <span>Quick View</span>
-                  </button>
-                )
-              )}
+              <button
+                onClick={() => {
+                  const item = mobileDrawerItem;
+                  setMobileDrawerItem(null);
+                  if (item.type === "FOLDER") {
+                    onNavigate(item.id, item.name, item.nodeKey!);
+                  } else if (item.nodeKey && item.fileIv) {
+                    onOpenViewer(item, item.nodeKey!, item.name, item.fileIv!);
+                  }
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
+              >
+                {mobileDrawerItem.type === "FOLDER" ? <FolderOpen size={18} /> : <Eye size={18} />}
+                <span>{mobileDrawerItem.type === "FOLDER" ? "Open" : "Preview"}</span>
+              </button>
               <button
                 onClick={() => {
                   const item = mobileDrawerItem;
@@ -1382,7 +1355,8 @@ function MediaGalleryContent({
                 <span>{mobileDrawerItem.starred ? "Remove Star" : "Add to Starred"}</span>
               </button>
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   const item = mobileDrawerItem;
                   setMobileDrawerItem(null);
                   onSelectNode(item, true);
@@ -1431,19 +1405,23 @@ function MediaGalleryContent({
               </button>
 
               {/* ── Danger Zone ── */}
-              <div className="h-px bg-border my-1.5" />
-              <p className="px-4 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-destructive/40 select-none">Danger Zone</p>
-              <button
-                onClick={(e) => {
-                  const item = mobileDrawerItem;
-                  setMobileDrawerItem(null);
-                  onDelete(item.id, e);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-destructive hover:bg-destructive/10 font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
-              >
-                <Trash size={18} />
-                <span>Move to Trash</span>
-              </button>
+              {mobileDrawerItem.parentId !== null && (
+                <>
+                  <div className="h-px bg-border my-1.5" />
+                  <p className="px-4 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-destructive/40 select-none">Danger Zone</p>
+                  <button
+                    onClick={(e) => {
+                      const item = mobileDrawerItem;
+                      setMobileDrawerItem(null);
+                      onDelete(item.id, e);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-destructive hover:bg-destructive/10 font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
+                  >
+                    <Trash size={18} />
+                    <span>Move to Trash</span>
+                  </button>
+                </>
+              )}
             </>
           )}
         </MobileDrawer>
@@ -1461,31 +1439,20 @@ function MediaGalleryContent({
               className="w-44 rounded-xl border border-border bg-popover shadow-lg py-1.5 z-[9999] text-left text-xs animate-in fade-in-50 duration-100 select-none"
               onClick={(e) => e.stopPropagation()}
             >
-              {item.type === "FOLDER" ? (
-                <button
-                  onClick={() => {
-                    setDropdownOpenId(null);
-                    onNavigate(item.id, item.name, item.nodeKey);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                >
-                  <FolderOpen size={15} />
-                  <span>Open</span>
-                </button>
-              ) : (
-                item.nodeKey && item.fileIv && (
-                  <button
-                    onClick={() => {
-                      setDropdownOpenId(null);
-                      onOpenViewer(item, item.nodeKey!, item.name, item.fileIv!);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
-                  >
-                    <Eye size={15} />
-                    <span>Quick View</span>
-                  </button>
-                )
-              )}
+              <button
+                onClick={() => {
+                  setDropdownOpenId(null);
+                  if (item.type === "FOLDER") {
+                    onNavigate(item.id, item.name, item.nodeKey!);
+                  } else if (item.nodeKey && item.fileIv) {
+                    onOpenViewer(item, item.nodeKey!, item.name, item.fileIv!);
+                  }
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted font-medium text-left cursor-pointer"
+              >
+                {item.type === "FOLDER" ? <FolderOpen size={15} /> : <Eye size={15} />}
+                <span>{item.type === "FOLDER" ? "Open" : "Preview"}</span>
+              </button>
               <button
                 onClick={() => {
                   setDropdownOpenId(null);
@@ -1497,7 +1464,8 @@ function MediaGalleryContent({
                 <span>{item.starred ? "Remove Star" : "Add to Starred"}</span>
               </button>
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setDropdownOpenId(null);
                   onSelectNode(item, true);
                 }}
@@ -1536,17 +1504,21 @@ function MediaGalleryContent({
                 <PencilSimple size={15} />
                 <span>Rename</span>
               </button>
-              <div className="h-px bg-border my-1" />
-              <button
-                onClick={(e) => {
-                  setDropdownOpenId(null);
-                  onDelete(item.id, e);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-destructive hover:bg-destructive/10 font-medium text-left cursor-pointer"
-              >
-                <Trash size={15} />
-                <span>Move to Trash</span>
-              </button>
+              {item.parentId !== null && (
+                <>
+                  <div className="h-px bg-border my-1" />
+                  <button
+                    onClick={(e) => {
+                      setDropdownOpenId(null);
+                      onDelete(item.id, e);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-destructive hover:bg-destructive/10 font-medium text-left cursor-pointer"
+                  >
+                    <Trash size={15} />
+                    <span>Move to Trash</span>
+                  </button>
+                </>
+              )}
             </div>,
             document.body
           );
@@ -1735,190 +1707,6 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
   const [tempName, setTempName] = React.useState(getBaseName(item.name, item.type));
   const isSubmitting = React.useRef(false);
 
-  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
-  const [textPreview, setTextPreview] = React.useState<string | null>(null);
-  const [sheetPreview, setSheetPreview] = React.useState<string[][] | null>(null);
-  const [previewLoading, setPreviewLoading] = React.useState(false);
-
-  React.useEffect(() => {
-    if (item.type !== "FILE" || !item.url || !item.nodeKey || !item.fileIv) return;
-
-    let active = true;
-    let localUrl: string | null = null;
-
-    const loadPreview = async () => {
-      const isImage = item.mimeType?.startsWith("image/");
-      const isText = item.mimeType?.startsWith("text/") || item.name.endsWith(".md") || item.name.endsWith(".json") || item.name.endsWith(".js");
-      const isCsv = item.name.endsWith(".csv");
-      const isPdf = item.mimeType === "application/pdf";
-      const ext = item.name.split(".").pop()?.toLowerCase();
-      const isDoc = ext === "docx" || ext === "doc" || ext === "xlsx" || ext === "xls" || ext === "pptx" || ext === "ppt";
-
-      if (!isImage && !isText && !isCsv && !isPdf && !isDoc) return;
-
-      setPreviewLoading(true);
-      try {
-        const res = await fetch(item.url);
-        if (!res.ok) return;
-
-        const encryptedBuffer = await res.arrayBuffer();
-        const decryptedBlob = await decryptFile(encryptedBuffer, item.nodeKey, item.fileIv);
-
-        if (!active) return;
-
-        if (isImage) {
-          localUrl = URL.createObjectURL(decryptedBlob);
-          setPreviewUrl(localUrl);
-        } else if (isText) {
-          const text = await decryptedBlob.text();
-          setTextPreview(text.substring(0, 150));
-        } else if (isCsv) {
-          const text = await decryptedBlob.text();
-          const rows = text.split("\n").slice(0, 4).map(r => r.split(",").slice(0, 3));
-          setSheetPreview(rows);
-        } else if (isPdf || isDoc) {
-          localUrl = URL.createObjectURL(decryptedBlob);
-          setPreviewUrl(localUrl);
-        }
-      } catch (err) {
-        console.error("Preview load failed", item.id, err);
-      } finally {
-        if (active) setPreviewLoading(false);
-      }
-    };
-
-    loadPreview();
-
-    return () => {
-      active = false;
-      if (localUrl) {
-        URL.revokeObjectURL(localUrl);
-      }
-    };
-  }, [item]);
-
-  const renderPreviewContainer = () => {
-    const isImage = item.mimeType?.startsWith("image/");
-    const isText = item.mimeType?.startsWith("text/") || item.name.endsWith(".md") || item.name.endsWith(".json") || item.name.endsWith(".js");
-    const isCsv = item.name.endsWith(".csv");
-    const isPdf = item.mimeType === "application/pdf";
-    const isAudio = item.mimeType?.startsWith("audio/");
-    const isVideo = item.mimeType?.startsWith("video/");
-
-    if (previewLoading) {
-      return (
-        <div className="w-full h-24 rounded bg-muted/40 animate-pulse flex items-center justify-center">
-          <span className="w-4 h-4 border-2 border-primary/40 border-t-transparent rounded-full animate-spin" />
-        </div>
-      );
-    }
-
-    if (isImage && previewUrl) {
-      return (
-        <div className="w-full h-24 rounded overflow-hidden border border-border/30 bg-muted/10 flex items-center justify-center">
-          <img src={previewUrl} alt="" className="w-full h-full object-cover select-none pointer-events-none" />
-        </div>
-      );
-    }
-
-    if (isText && textPreview) {
-      return (
-        <div className="w-full h-24 rounded border border-border/40 bg-muted/10 p-2 text-[8px] font-mono overflow-hidden text-left text-muted-foreground/80 leading-tight break-all select-none">
-          {textPreview}
-        </div>
-      );
-    }
-
-    if (isCsv && sheetPreview) {
-      return (
-        <div className="w-full h-24 rounded border border-border/40 bg-muted/10 p-1 overflow-hidden select-none flex flex-col gap-0.5 text-[7px]">
-          {sheetPreview.map((row, rIdx) => (
-            <div key={rIdx} className="flex gap-0.5 w-full">
-              {row.map((cell, cIdx) => (
-                <div key={cIdx} className="flex-1 bg-card border border-border/20 px-1 py-0.5 truncate text-center">
-                  {cell}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    if (isPdf && previewUrl) {
-      return (
-        <div className="w-full h-28 rounded overflow-hidden border border-border/30 bg-white dark:bg-neutral-900 flex items-start justify-center select-none pointer-events-none">
-          <PdfThumbnail blobUrl={previewUrl} />
-        </div>
-      );
-    }
-
-    if (isPdf && !previewUrl) {
-      return (
-        <div className="w-full h-28 rounded border border-border/40 bg-white dark:bg-card p-2.5 flex flex-col gap-1.5 shadow-sm overflow-hidden select-none text-left">
-          <div className="flex items-center gap-1.5 border-b border-border/20 pb-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
-            <div className="h-2 w-16 bg-muted rounded" />
-          </div>
-          <div className="h-1.5 w-full bg-muted/70 rounded" />
-          <div className="h-1.5 w-5/6 bg-muted/50 rounded" />
-          <div className="h-1.5 w-4/6 bg-muted/40 rounded" />
-        </div>
-      );
-    }
-
-    if (isVideo) {
-      return (
-        <div className="w-full h-24 rounded border border-border/40 bg-black relative flex items-center justify-center overflow-hidden">
-          <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center text-white">
-            <Play size={12} weight="fill" />
-          </div>
-          <span className="absolute bottom-1 right-1 text-[8px] px-1 py-0.5 bg-black/60 text-white rounded font-mono">VIDEO</span>
-        </div>
-      );
-    }
-
-    if (isAudio) {
-      return (
-        <div className="w-full h-24 rounded border border-border/40 bg-muted/10 flex flex-col items-center justify-center p-2 select-none text-muted-foreground gap-1.5">
-          <FileAudio size={24} className="text-primary/70 animate-pulse" />
-          <div className="flex items-center gap-0.5 h-3 justify-center">
-            <div className="w-0.5 h-2 bg-primary/40 rounded-full" />
-            <div className="w-0.5 h-3 bg-primary/60 rounded-full" />
-            <div className="w-0.5 h-1.5 bg-primary/40 rounded-full" />
-            <div className="w-0.5 h-2 bg-primary/50 rounded-full" />
-          </div>
-        </div>
-      );
-    }
-
-    if (item.type === "FOLDER") {
-      return (
-        <div className="w-full h-24 rounded border border-border/30 bg-yellow-500/5 dark:bg-yellow-500/10 flex flex-col items-center justify-center p-2 select-none text-yellow-500/80 gap-1.5">
-          <Folder weight="fill" size={32} />
-          <span className="text-[9px] font-semibold text-yellow-600/70 dark:text-yellow-500/60 uppercase">Folder</span>
-        </div>
-      );
-    }
-
-    // Document files (Word, Excel, etc.) - show styled file-type icon or preview glimpse
-    const isDoc = !isImage && !isText && !isCsv && !isPdf && !isAudio && !isVideo && item.type === "FILE";
-    if (isDoc) {
-      const ext = item.name.split(".").pop()?.toLowerCase();
-      return (
-        <div className="w-full h-24 rounded overflow-hidden select-none">
-          <DocThumbnail blobUrl={previewUrl || ""} fileName={item.name} fileType={ext} />
-        </div>
-      );
-    }
-
-    return (
-      <div className="w-full h-24 rounded border border-border/30 bg-muted/10 flex flex-col items-center justify-center p-2 select-none text-muted-foreground/60 gap-1.5">
-        <File size={28} />
-        <span className="text-[9px] font-semibold uppercase">Document</span>
-      </div>
-    );
-  };
 
   React.useEffect(() => {
     setTempName(getBaseName(item.name, item.type));
@@ -1951,7 +1739,8 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
     }
   };
 
-  const handleClick = () => {
+  const handleClick = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     const isMobile = window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window);
     if (isMobile) {
       // On mobile, single tap opens directly
@@ -2105,7 +1894,7 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 
         {/* Middle Area: File Preview (dynamic from decryptFile or custom fallback styles) */}
         <div className="w-full">
-          {renderPreviewContainer()}
+          <NodePreview item={item} />
         </div>
 
       </ContextMenuTrigger>
@@ -2123,8 +1912,8 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           onClick={handleOpen}
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
         >
-          <FolderOpen size={16} />
-          <span>Open</span>
+          {item.type === "FOLDER" ? <FolderOpen size={16} /> : <Eye size={16} />}
+          <span>{item.type === "FOLDER" ? "Open" : "Preview"}</span>
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onDownloadNode(item)}
@@ -2134,7 +1923,10 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           <span>Download</span>
         </ContextMenuItem>
         <ContextMenuItem
-          onClick={() => onSelect(item, true)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(item, true);
+          }}
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
         >
           <Info size={16} />
@@ -2162,14 +1954,18 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           <PencilSimple size={16} />
           <span>Rename</span>
         </ContextMenuItem>
-        <ContextMenuSeparator className="-mx-1.5 my-1 h-px bg-border/50" />
-        <ContextMenuItem
-          onClick={(e: any) => onDelete(item.id, e)}
-          className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer transition-colors"
-        >
-          <Trash size={16} />
-          <span>Delete</span>
-        </ContextMenuItem>
+        {item.parentId !== null && (
+          <>
+            <ContextMenuSeparator className="-mx-1.5 my-1 h-px bg-border/50" />
+            <ContextMenuItem
+              onClick={(e: any) => onDelete(item.id, e)}
+              className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer transition-colors"
+            >
+              <Trash size={16} />
+              <span>Delete</span>
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -2215,7 +2011,8 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 
 
 
-  const handleClick = () => {
+  const handleClick = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     const isMobile = window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window);
     if (isMobile) {
       if (item.type === "FOLDER") {
@@ -2447,8 +2244,8 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           onClick={handleOpen}
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
         >
-          <FolderOpen size={16} />
-          <span>Open</span>
+          {item.type === "FOLDER" ? <FolderOpen size={16} /> : <Eye size={16} />}
+          <span>{item.type === "FOLDER" ? "Open" : "Preview"}</span>
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onDownloadNode(item)}
@@ -2458,7 +2255,10 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           <span>Download</span>
         </ContextMenuItem>
         <ContextMenuItem
-          onClick={() => onSelect(item, true)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(item, true);
+          }}
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
         >
           <Info size={16} />
@@ -2486,14 +2286,18 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           <PencilSimple size={16} />
           <span>Rename</span>
         </ContextMenuItem>
-        <ContextMenuSeparator className="-mx-1.5 my-1 h-px bg-border/50" />
-        <ContextMenuItem
-          onClick={(e: any) => onDelete(item.id, e)}
-          className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer transition-colors"
-        >
-          <Trash size={16} />
-          <span>Delete</span>
-        </ContextMenuItem>
+        {item.parentId !== null && (
+          <>
+            <ContextMenuSeparator className="-mx-1.5 my-1 h-px bg-border/50" />
+            <ContextMenuItem
+              onClick={(e: any) => onDelete(item.id, e)}
+              className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer transition-colors"
+            >
+              <Trash size={16} />
+              <span>Delete</span>
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
