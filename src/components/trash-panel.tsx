@@ -161,7 +161,6 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
     const saved = localStorage.getItem("lumora-view-mode") as "grid" | "list";
     if (saved === "grid" || saved === "list") setViewMode(saved);
   }, []);
-  // ── Fetch trashed nodes ──────────────────────────────────────────────────
   const fetchTrash = React.useCallback(async (cursor: string | null = null, isLoadMore: boolean = false) => {
     if (!isReady) return
     if (isLoadMore) {
@@ -184,11 +183,13 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
         }
         setNextCursor(json.nextCursor || null)
         
-        const fMap = isLoadMore ? new Map(foldersMap) : new Map()
-        if (!isLoadMore) {
-          ;(json.folders || []).forEach((f: any) => fMap.set(f.id, f))
-        }
-        setFoldersMap(fMap)
+        setFoldersMap(prev => {
+          const fMap = isLoadMore ? new Map(prev) : new Map()
+          if (!isLoadMore) {
+            ;(json.folders || []).forEach((f: any) => fMap.set(f.id, f))
+          }
+          return fMap
+        })
       }
     } catch (err) {
       console.error("Failed to fetch trash", err)
@@ -196,22 +197,22 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
       setLoading(false)
       setIsLoadingMore(false)
     }
-  }, [isReady, foldersMap])
+  }, [isReady])
 
   React.useEffect(() => {
     fetchTrash()
-    
+  }, [fetchTrash, refreshTrigger])
+
+  React.useEffect(() => {
     ;(window as any)._loadMoreTrashFiles = () => {
       if (nextCursor && !isLoadingMore) {
         fetchTrash(nextCursor, true)
       }
     }
-
     return () => {
       delete (window as any)._loadMoreTrashFiles
     }
-  }, [fetchTrash, refreshTrigger, nextCursor, isLoadingMore])
-
+  }, [fetchTrash, nextCursor, isLoadingMore])
 
   // ── Decrypt node names client-side ──────────────────────────────────────
   React.useEffect(() => {
