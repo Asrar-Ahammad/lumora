@@ -21,8 +21,7 @@ interface DestinationPickerModalProps {
   isOpen: boolean
   onClose: () => void
   onConfirm: (targetParentId: string | null) => void
-  currentNodeId: string | null
-  currentNodeType: "FOLDER" | "FILE" | null
+  excludeFolderIds: string[]
   currentNodeName?: string | null
   title: string
   folders: FolderData[]
@@ -33,8 +32,7 @@ export function DestinationPickerModal({
   isOpen,
   onClose,
   onConfirm,
-  currentNodeId,
-  currentNodeType,
+  excludeFolderIds,
   currentNodeName = null,
   title,
   folders,
@@ -46,8 +44,7 @@ export function DestinationPickerModal({
   // 1. Calculate descendants to exclude if moving/copying a folder
   const excludedIds = React.useMemo(() => {
     const ids = new Set<string>()
-    if (!currentNodeId || currentNodeType !== "FOLDER") return ids
-
+    
     function recurse(id: string) {
       ids.add(id)
       const children = folders.filter((f) => f.parentId === id)
@@ -56,9 +53,12 @@ export function DestinationPickerModal({
       }
     }
 
-    recurse(currentNodeId)
+    for (const folderId of excludeFolderIds) {
+      recurse(folderId)
+    }
+
     return ids
-  }, [currentNodeId, currentNodeType, folders])
+  }, [excludeFolderIds, folders])
 
   // 2. Build the indented folder tree list
   const folderTree = React.useMemo(() => {

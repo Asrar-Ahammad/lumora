@@ -35,6 +35,7 @@ type SelectedNodeData = {
   captionEnc: string | null;
   captionIV: string | null;
   createdAt: string;
+  locationPath?: any[];
 };
 
 export function DashboardClient() {
@@ -958,10 +959,18 @@ export function DashboardClient() {
                   <div className="flex justify-between py-1 border-b border-border/50">
                     <span className="text-muted-foreground">Uploaded At</span>
                     <span className="text-foreground font-medium flex items-center gap-1">
-                      <Calendar size={13} />
                       {new Date(selectedNode.createdAt).toLocaleDateString()}
                     </span>
                   </div>
+
+                  {selectedNode.locationPath && selectedNode.locationPath.length > 0 && (
+                    <div className="flex justify-between py-1 border-b border-border/50">
+                      <span className="text-muted-foreground">Location</span>
+                      <span className="text-foreground font-medium truncate max-w-[150px]" title={(selectedNode.locationPath as any[]).map(l => l.name).join(" / ")}>
+                        {(selectedNode.locationPath as any[]).map(l => l.name).join(" / ")}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* AI Details Decrypted Client-Side */}
@@ -1064,10 +1073,18 @@ export function DashboardClient() {
                     <div className="flex justify-between py-1 border-b border-border/50">
                       <span className="text-muted-foreground">Uploaded At</span>
                       <span className="text-foreground font-medium flex items-center gap-1">
-                        <Calendar size={13} />
                         {new Date(selectedNode.createdAt).toLocaleDateString()}
                       </span>
                     </div>
+
+                    {selectedNode.locationPath && selectedNode.locationPath.length > 0 && (
+                      <div className="flex justify-between py-1 border-b border-border/50">
+                        <span className="text-muted-foreground">Location</span>
+                        <span className="text-foreground font-medium truncate max-w-[150px]" title={(selectedNode.locationPath as any[]).map(l => l.name).join(" / ")}>
+                          {(selectedNode.locationPath as any[]).map(l => l.name).join(" / ")}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {selectedNode.type === "FILE" && (

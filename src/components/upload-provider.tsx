@@ -71,7 +71,8 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     parentKey: CryptoKey;
     aiSearchEnabled: boolean;
   }>>(new Map());
-  const isProcessingRef = React.useRef(false);
+  const activeUploadsRef = React.useRef(0);
+  const MAX_CONCURRENT_UPLOADS = 5;
 
   // Derive if any file is actively uploading
   const isUploading = entries.some(
@@ -91,15 +92,14 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  // Background queue processing loop
-  const processQueue = React.useCallback(async () => {
-    if (isProcessingRef.current || queueRef.current.length === 0 || !cryptoKey) {
-      return;
-    }
-
-    isProcessingRef.current = true;
-    const task = queueRef.current[0];
-
+  // Extracted task processor
+  const processTask = React.useCallback(async (task: {
+    file: File;
+    id: string;
+    parentId: string;
+    parentKey: CryptoKey;
+    aiSearchEnabled: boolean;
+  }) => {
     const { file, id, parentId, parentKey, aiSearchEnabled } = task;
 
     try {
@@ -219,17 +219,30 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         status: "error",
         error: err?.message || "Internal upload failure",
       });
-    } finally {
-      // Dequeue first item and schedule next loop run
-      queueRef.current.shift();
-      isProcessingRef.current = false;
-      processQueue();
     }
-  }, [cryptoKey, updateEntry]);
+  }, [updateEntry]);
+
+  // Background queue processing loop
+  const processQueue = React.useCallback(() => {
+    if (!cryptoKey) return;
+
+    while (
+      activeUploadsRef.current < MAX_CONCURRENT_UPLOADS &&
+      queueRef.current.length > 0
+    ) {
+      activeUploadsRef.current++;
+      const task = queueRef.current.shift()!;
+      
+      processTask(task).finally(() => {
+        activeUploadsRef.current--;
+        processQueue(); // trigger next
+      });
+    }
+  }, [cryptoKey, processTask]);
 
   // Run queue loop when files are added or crypto key changes
   React.useEffect(() => {
-    if (cryptoKey && queueRef.current.length > 0 && !isProcessingRef.current) {
+    if (cryptoKey && queueRef.current.length > 0 && activeUploadsRef.current < MAX_CONCURRENT_UPLOADS) {
       processQueue();
     }
   }, [cryptoKey, entries, processQueue]);

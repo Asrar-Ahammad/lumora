@@ -12,7 +12,7 @@ import {
   FileText, Info, Download, Trash, Eye, CaretRight, ShieldCheck,
   CheckCircle, XCircle, FolderOpen, ArrowSquareOut, Copy, UploadSimple,
   FolderPlus, Warning, PencilSimple, DotsThreeVertical, Check, X,
-  ArrowUp, ArrowDown, User, Play, Image as ImageIcon, FileDoc, FileXls, FilePpt, FileZip, Star
+  ArrowUp, ArrowDown, User, Play, Image as ImageIcon, FileDoc, FileXls, FilePpt, FileZip, Star, CheckSquareOffset
 } from "@phosphor-icons/react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -113,7 +113,9 @@ export function MediaGallery({
   // Picker States
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [pickerAction, setPickerAction] = React.useState<"move" | "copy" | null>(null)
-  const [pickerNode, setPickerNode] = React.useState<DecryptedNodeData | null>(null)
+  const [pickerNodes, setPickerNodes] = React.useState<DecryptedNodeData[]>([])
+  const [isMultiSelectMode, setIsMultiSelectMode] = React.useState(false)
+  const [selectedItemIds, setSelectedItemIds] = React.useState<Set<string>>(new Set())
   const [actionLoading, setActionLoading] = React.useState(false)
   const [pickerFolders, setPickerFolders] = React.useState<any[]>([])
   const [deleteNodeId, setDeleteNodeId] = React.useState<string | null>(null)
@@ -252,8 +254,9 @@ export function MediaGallery({
     }
   }
 
-  const handleMoveTo = async (node: DecryptedNodeData, targetParentId: string | null) => {
+  const handleMoveTo = async (nodes: DecryptedNodeData[], targetParentId: string | null) => {
     setActionLoading(true);
+    let successCount = 0;
     try {
       let targetParentKey: CryptoKey;
       if (targetParentId === null) {
@@ -265,22 +268,25 @@ export function MediaGallery({
         targetParentKey = await decryptNodeKeyCascade(folder, foldersMap);
       }
 
-      const { encryptedKey: nodeKeyEnc, iv: nodeKeyIV } = await encryptNodeKey(node.nodeKey!, targetParentKey);
+      for (const node of nodes) {
+        const { encryptedKey: nodeKeyEnc, iv: nodeKeyIV } = await encryptNodeKey(node.nodeKey!, targetParentKey);
 
-      const res = await fetch("/api/nodes/move", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nodeId: node.id,
-          targetParentId,
-          nodeKeyEnc,
-          nodeKeyIV,
-        }),
-      });
+        const res = await fetch("/api/nodes/move", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nodeId: node.id,
+            targetParentId,
+            nodeKeyEnc,
+            nodeKeyIV,
+          }),
+        });
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Move failed");
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || `Move failed for ${node.name}`);
+        }
+        successCount++;
       }
 
       toast({
@@ -290,10 +296,12 @@ export function MediaGallery({
             Moved successfully
           </span>
         ),
-        description: `"${node.name}" has been moved.`,
+        description: `${successCount} item(s) have been moved.`,
       });
 
       onRefresh();
+      setIsMultiSelectMode(false);
+      setSelectedItemIds(new Set());
     } catch (err: any) {
       console.error("Move failed", err);
       toast({
@@ -309,17 +317,19 @@ export function MediaGallery({
     } finally {
       setActionLoading(false);
       setPickerOpen(false);
+      setPickerNodes([]);
     }
   };
 
   const handleMoveNodeDirectly = async (draggedNodeId: string, targetParentId: string | null) => {
     const node = decryptedItems.find((n: any) => n.id === draggedNodeId);
     if (!node) return;
-    await handleMoveTo(node, targetParentId);
+    await handleMoveTo([node], targetParentId);
   };
 
-  const handleCopyTo = async (node: DecryptedNodeData, targetParentId: string | null) => {
+  const handleCopyTo = async (nodes: DecryptedNodeData[], targetParentId: string | null) => {
     setActionLoading(true);
+    let successCount = 0;
     try {
       let targetParentKey: CryptoKey;
       if (targetParentId === null) {
@@ -331,53 +341,56 @@ export function MediaGallery({
         targetParentKey = await decryptNodeKeyCascade(folder, foldersMap);
       }
 
-      const { encryptedKey: nodeKeyEnc, iv: nodeKeyIV } = await encryptNodeKey(node.nodeKey!, targetParentKey);
-      let copyNameText = node.name;
-      if (node.type === "FILE") {
-        let fileIv = node.fileIv;
-        let lastModified = node.lastModified;
+      for (const node of nodes) {
+        const { encryptedKey: nodeKeyEnc, iv: nodeKeyIV } = await encryptNodeKey(node.nodeKey!, targetParentKey);
+        let copyNameText = node.name;
+        if (node.type === "FILE") {
+          let fileIv = node.fileIv;
+          let lastModified = node.lastModified;
 
-        if (!fileIv) {
-          try {
-            const decName = await decryptText(node.nameEnc, node.nodeKey!, node.nameIV);
-            const parsed = JSON.parse(decName);
-            fileIv = parsed.fileIv;
-            if (parsed.lastModified) lastModified = parsed.lastModified;
-          } catch (err) {
-            console.error("Failed to decrypt existing metadata during copy", err);
+          if (!fileIv) {
+            try {
+              const decName = await decryptText(node.nameEnc, node.nodeKey!, node.nameIV);
+              const parsed = JSON.parse(decName);
+              fileIv = parsed.fileIv;
+              if (parsed.lastModified) lastModified = parsed.lastModified;
+            } catch (err) {
+              console.error("Failed to decrypt existing metadata during copy", err);
+            }
           }
+
+          copyNameText = JSON.stringify({
+            name: node.name,
+            fileIv: fileIv || null,
+            lastModified: lastModified || Date.now()
+          });
+        }
+        const { cipherText: nameEnc, iv: nameIV } = await encryptText(copyNameText, node.nodeKey!);
+
+        const res = await fetch("/api/nodes/copy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nodeId: node.id,
+            targetParentId,
+            nodeKeyEnc,
+            nodeKeyIV,
+            nameEnc,
+            nameIV,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Copy API failed for ${node.name}`);
         }
 
-        copyNameText = JSON.stringify({
-          name: node.name,
-          fileIv: fileIv || null,
-          lastModified: lastModified || Date.now()
-        });
-      }
-      const { cipherText: nameEnc, iv: nameIV } = await encryptText(copyNameText, node.nodeKey!);
+        const data = await res.json();
+        const copiedNode = data.node;
 
-      const res = await fetch("/api/nodes/copy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nodeId: node.id,
-          targetParentId,
-          nodeKeyEnc,
-          nodeKeyIV,
-          nameEnc,
-          nameIV,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Copy API failed");
-      }
-
-      const data = await res.json();
-      const copiedNode = data.node;
-
-      if (node.type === "FOLDER") {
-        await copyDescendants(node.id, copiedNode.id, node.nodeKey!);
+        if (node.type === "FOLDER") {
+          await copyDescendants(node.id, copiedNode.id, node.nodeKey!);
+        }
+        successCount++;
       }
 
       toast({
@@ -387,10 +400,12 @@ export function MediaGallery({
             Copied successfully
           </span>
         ),
-        description: `"${node.name}" has been duplicated.`,
+        description: `${successCount} item(s) have been duplicated.`,
       });
 
       onRefresh();
+      setIsMultiSelectMode(false);
+      setSelectedItemIds(new Set());
     } catch (err) {
       console.error("Copy failed", err);
       toast({
@@ -406,6 +421,7 @@ export function MediaGallery({
     } finally {
       setActionLoading(false);
       setPickerOpen(false);
+      setPickerNodes([]);
     }
   };
 
@@ -691,11 +707,11 @@ export function MediaGallery({
   };
 
   const handlePickerConfirm = (targetParentId: string | null) => {
-    if (!pickerNode) return;
+    if (pickerNodes.length === 0) return;
     if (pickerAction === "move") {
-      handleMoveTo(pickerNode, targetParentId);
+      handleMoveTo(pickerNodes, targetParentId);
     } else if (pickerAction === "copy") {
-      handleCopyTo(pickerNode, targetParentId);
+      handleCopyTo(pickerNodes, targetParentId);
     }
   };
 
@@ -720,6 +736,24 @@ export function MediaGallery({
   // Track previous refreshTrigger to detect changes
   const prevRefreshTrigger = React.useRef(refreshTrigger);
   const hasMounted = React.useRef(false);
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        if (next.size === 0) setIsMultiSelectMode(false);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleEnableMultiSelect = (id: string) => {
+    setIsMultiSelectMode(true);
+    setSelectedItemIds(new Set([id]));
+  };
 
   // Fetch, decrypt, and cache nodes
   React.useEffect(() => {
@@ -801,39 +835,39 @@ export function MediaGallery({
                 } catch {
                   name = decName;
                 }
+              }
 
-                // Reconstruct folder location path
-                let currId = item.parentId;
-                while (currId) {
-                  const folder = fMap.get(currId);
-                  if (!folder) break;
-                  try {
-                    const folderKey = await decryptNodeKeyCascade(folder, fMap);
-                    const folderName = await decryptText(folder.nameEnc, folderKey, folder.nameIV);
-                    locationPath.unshift({
-                      id: folder.id,
-                      name: folder.parentId === null ? "Root" : folderName,
-                      key: folderKey
-                    });
-                  } catch (err) {
-                    console.error("Failed to decrypt parent folder name", currId, err);
-                  }
-                  currId = folder.parentId;
+              // Reconstruct folder location path
+              let currId = item.parentId;
+              while (currId) {
+                const folder = fMap.get(currId);
+                if (!folder) break;
+                try {
+                  const folderKey = await decryptNodeKeyCascade(folder, fMap);
+                  const folderName = await decryptText(folder.nameEnc, folderKey, folder.nameIV);
+                  locationPath.unshift({
+                    id: folder.id,
+                    name: folder.parentId === null ? "Root" : folderName,
+                    key: folderKey
+                  });
+                } catch (err) {
+                  console.error("Failed to decrypt parent folder name", currId, err);
                 }
+                currId = folder.parentId;
+              }
 
-                // Fallback to Root if it's at the root level (locationPath is empty)
-                if (locationPath.length === 0) {
-                  const rootNode = Array.from(fMap.values()).find((f: any) => f.parentId === null);
-                  if (rootNode) {
-                    try {
-                      const rootKey = await decryptNodeKeyCascade(rootNode, fMap);
-                      locationPath.push({
-                        id: rootNode.id,
-                        name: "Root",
-                        key: rootKey
-                      });
-                    } catch { }
-                  }
+              // Fallback to Root if it's at the root level (locationPath is empty)
+              if (locationPath.length === 0) {
+                const rootNode = Array.from(fMap.values()).find((f: any) => f.parentId === null);
+                if (rootNode) {
+                  try {
+                    const rootKey = await decryptNodeKeyCascade(rootNode, fMap);
+                    locationPath.push({
+                      id: rootNode.id,
+                      name: "Root",
+                      key: rootKey
+                    });
+                  } catch { }
                 }
               }
               list.push({ ...item, name, fileIv, lastModified, nodeKey: key, locationPath });
@@ -872,7 +906,7 @@ export function MediaGallery({
 
     fetchAndDecryptNodes();
 
-    // Attach to window so we can trigger loadMore from outside the effect
+    // Attach to window so we can trigger loadMore from side the effect
     (window as any)._loadMoreNodes = () => {
       if (nextCursor && !isLoadingMore) {
         fetchAndDecryptNodes(nextCursor, true);
@@ -920,8 +954,16 @@ export function MediaGallery({
         localQuery={localQuery}
         onTriggerUpload={onTriggerUpload}
         onTriggerCreateFolder={onTriggerCreateFolder}
-        onMoveTo={(node: any) => { setPickerNode(node); setPickerAction("move"); setPickerOpen(true); }}
-        onCopyTo={(node: any) => { setPickerNode(node); setPickerAction("copy"); setPickerOpen(true); }}
+        onMoveTo={(node: any) => { 
+          setPickerNodes(isMultiSelectMode && selectedItemIds.has(node.id) ? decryptedItems.filter((i) => selectedItemIds.has(i.id)) : [node]); 
+          setPickerAction("move"); 
+          setPickerOpen(true); 
+        }}
+        onCopyTo={(node: any) => { 
+          setPickerNodes(isMultiSelectMode && selectedItemIds.has(node.id) ? decryptedItems.filter((i) => selectedItemIds.has(i.id)) : [node]); 
+          setPickerAction("copy"); 
+          setPickerOpen(true); 
+        }}
         onRename={(node: any) => setRenameNodeId(node.id)}
         onMoveNodeDirectly={handleMoveNodeDirectly}
         renameNodeId={renameNodeId}
@@ -933,15 +975,23 @@ export function MediaGallery({
         hasMore={!!nextCursor}
         isLoadingMore={isLoadingMore}
         onLoadMore={handleLoadMore}
+        isMultiSelectMode={isMultiSelectMode}
+        selectedItemIds={selectedItemIds}
+        handleToggleSelect={handleToggleSelect}
+        handleEnableMultiSelect={handleEnableMultiSelect}
+        setPickerAction={setPickerAction}
+        setPickerNodes={setPickerNodes}
+        setPickerOpen={setPickerOpen}
+        setIsMultiSelectMode={setIsMultiSelectMode}
+        setSelectedItemIds={setSelectedItemIds}
       />
       {pickerOpen && (
         <DestinationPickerModal
           isOpen={pickerOpen}
           onClose={() => setPickerOpen(false)}
           onConfirm={handlePickerConfirm}
-          currentNodeId={pickerNode?.id || null}
-          currentNodeType={pickerNode?.type || null}
-          currentNodeName={pickerNode?.name || null}
+          excludeFolderIds={pickerNodes.filter(n => n.type === "FOLDER").map(n => n.id)}
+          currentNodeName={pickerNodes.length === 1 ? pickerNodes[0].name : `${pickerNodes.length} items`}
           title={pickerAction === "move" ? "Move to" : "Copy to"}
           folders={pickerFolders}
           actionLoading={actionLoading}
@@ -1132,7 +1182,9 @@ function MediaGalleryContent({
   viewerNode, viewerKey, setViewerNode, setViewerKey, localQuery,
   onTriggerUpload, onTriggerCreateFolder, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly,
   renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar,
-  isInfoPanelOpen, hasMore, isLoadingMore, onLoadMore
+  isInfoPanelOpen, hasMore, isLoadingMore, onLoadMore,
+  isMultiSelectMode, selectedItemIds, handleToggleSelect, handleEnableMultiSelect,
+  setPickerAction, setPickerNodes, setPickerOpen, setIsMultiSelectMode, setSelectedItemIds
 }: any) {
   const observerRef = React.useRef<IntersectionObserver | null>(null);
   const loadMoreRef = React.useCallback(
@@ -1286,6 +1338,10 @@ function MediaGalleryContent({
             onDownloadNode={onDownloadNode}
             onOptionsClick={handleOptionsClick}
             isDropdownOpen={dropdownOpenId === item.id}
+            isMultiSelectMode={isMultiSelectMode}
+            selectedItemIds={selectedItemIds}
+            onToggleSelect={handleToggleSelect}
+            onEnableMultiSelect={handleEnableMultiSelect}
           />
         ))}
       </div>
@@ -1361,6 +1417,10 @@ function MediaGalleryContent({
                 isDropdownOpen={dropdownOpenId === item.id}
                 onDownloadNode={onDownloadNode}
                 toggleStar={toggleStar}
+                isMultiSelectMode={isMultiSelectMode}
+                selectedItemIds={selectedItemIds}
+                onToggleSelect={handleToggleSelect}
+                onEnableMultiSelect={handleEnableMultiSelect}
               />
             ))}
           </tbody>
@@ -1388,6 +1448,47 @@ function MediaGalleryContent({
   const renderSharedControls = () => {
     return (
       <>
+        {isMultiSelectMode && selectedItemIds.size > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5 duration-200">
+            <div className="bg-popover border border-border shadow-xl rounded-full px-4 py-2.5 flex items-center gap-4">
+              <span className="text-sm font-medium whitespace-nowrap">
+                {selectedItemIds.size} item{selectedItemIds.size !== 1 ? 's' : ''} selected
+              </span>
+              <div className="w-px h-4 bg-border" />
+              <button
+                onClick={() => {
+                  setPickerAction("move");
+                  setPickerNodes(decryptedItems.filter((i: any) => selectedItemIds.has(i.id)));
+                  setPickerOpen(true);
+                }}
+                className="text-sm font-medium text-primary hover:text-primary/80 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                Move
+              </button>
+              <button
+                onClick={() => {
+                  setPickerAction("copy");
+                  setPickerNodes(decryptedItems.filter((i: any) => selectedItemIds.has(i.id)));
+                  setPickerOpen(true);
+                }}
+                className="text-sm font-medium text-primary hover:text-primary/80 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                Copy
+              </button>
+              <button
+                onClick={() => {
+                  setIsMultiSelectMode(false);
+                  setSelectedItemIds(new Set());
+                }}
+                className="p-1 text-muted-foreground hover:bg-muted rounded-full transition-colors cursor-pointer"
+                title="Cancel"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {viewerNode && viewerKey && (
           <FileViewer
             isOpen={!!viewerNode}
@@ -1483,6 +1584,17 @@ function MediaGalleryContent({
               >
                 <PencilSimple size={18} />
                 <span>Rename</span>
+              </button>
+              <button
+                onClick={() => {
+                  const item = mobileDrawerItem;
+                  setMobileDrawerItem(null);
+                  handleEnableMultiSelect(item.id);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted font-medium text-left rounded-xl transition-colors cursor-pointer text-sm"
+              >
+                <CheckSquareOffset size={18} />
+                <span>Select Multiple</span>
               </button>
 
               {/* ── Danger Zone ── */}
@@ -1784,8 +1896,8 @@ const getExtension = (name: string, type: string) => {
 };
 
 // GRID ITEM SUBCOMPONENT (Now takes pre-decrypted properties)
-function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar, onOptionsClick, isDropdownOpen }: any) {
-  const isSelected = item.id === selectedNodeId;
+function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar, onOptionsClick, isDropdownOpen, isMultiSelectMode, selectedItemIds, onToggleSelect, onEnableMultiSelect }: any) {
+  const isSelected = isMultiSelectMode ? selectedItemIds.has(item.id) : item.id === selectedNodeId;
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [tempName, setTempName] = React.useState(getBaseName(item.name, item.type));
   const isSubmitting = React.useRef(false);
@@ -1824,6 +1936,10 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 
   const handleClick = (e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (isMultiSelectMode) {
+      onToggleSelect(item.id);
+      return;
+    }
     const isMobile = window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window);
     if (isMobile) {
       // On mobile, single tap opens directly
@@ -1919,18 +2035,28 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           isSelected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border hover:border-primary/50"
         }`}
     >
-      {/* Top Header Row (matches reference photo: Icon, name, actions button) */}
       <div className="flex items-center justify-between gap-2 w-full min-w-0">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <div className="flex-shrink-0">
-            {item.type === "FOLDER" ? (
-              <Folder weight="fill" size={18} className="text-yellow-500" />
-            ) : (
-              <div className="scale-75 origin-left -mr-1">
-                {getFileIcon(item.mimeType, item.name)}
+          {isMultiSelectMode ? (
+            <div 
+              className="flex-shrink-0 cursor-pointer flex items-center justify-center p-1"
+              onClick={(e) => { e.stopPropagation(); onToggleSelect(item.id); }}
+            >
+              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                {isSelected && <Check weight="bold" size={12} />}
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="flex-shrink-0">
+              {item.type === "FOLDER" ? (
+                <Folder weight="fill" size={18} className="text-yellow-500" />
+              ) : (
+                <div className="scale-75 origin-left -mr-1">
+                  {getFileIcon(item.mimeType, item.name)}
+                </div>
+              )}
+            </div>
+          )}
 
           {renameNodeId === item.id ? (
             <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()}>
@@ -1996,6 +2122,17 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
       <ContextMenuTrigger render={gridContent} />
 
       <ContextMenuContent className="w-48 bg-card/85 backdrop-blur-md border border-border/80 shadow-lg rounded-xl p-1.5 animate-in fade-in-50 duration-100 select-none">
+        <ContextMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            onEnableMultiSelect(item.id);
+          }}
+          className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
+        >
+          <CheckSquareOffset size={16} />
+          <span>Select Multiple</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator className="-mx-1.5 my-1 h-px bg-border/50" />
         <ContextMenuItem
           onClick={() => toggleStar(item)}
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
@@ -2068,8 +2205,8 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 }
 
 // LIST ITEM SUBCOMPONENT (Now takes pre-decrypted properties)
-function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onOptionsClick, isDropdownOpen, onDownloadNode, toggleStar }: any) {
-  const isSelected = item.id === selectedNodeId;
+function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onOptionsClick, isDropdownOpen, onDownloadNode, toggleStar, isMultiSelectMode, selectedItemIds, onToggleSelect, onEnableMultiSelect }: any) {
+  const isSelected = isMultiSelectMode ? selectedItemIds.has(item.id) : item.id === selectedNodeId;
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [tempName, setTempName] = React.useState(getBaseName(item.name, item.type));
   const isSubmitting = React.useRef(false);
@@ -2109,6 +2246,10 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 
   const handleClick = (e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (isMultiSelectMode) {
+      onToggleSelect(item.id);
+      return;
+    }
     const isMobile = window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window);
     if (isMobile) {
       if (item.type === "FOLDER") {
@@ -2205,13 +2346,26 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
     >
       <td className="px-6 py-3.5 w-full max-w-0">
         <div className="flex items-center gap-3 w-full min-w-0">
-          <div className="p-1.5 bg-muted rounded-md group-hover:bg-primary/10 group-hover:text-primary transition-colors flex-shrink-0">
-            {item.type === "FOLDER" ? (
-              <Folder weight="fill" size={20} className="text-yellow-500" />
-            ) : (
-              getFileIcon(item.mimeType, item.name)
-            )}
-          </div>
+          {isMultiSelectMode ? (
+            <div 
+              className="flex-shrink-0 cursor-pointer flex items-center justify-center p-1 -ml-1"
+              onClick={(e) => { e.stopPropagation(); onToggleSelect(item.id); }}
+            >
+              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                {isSelected && <Check weight="bold" size={12} />}
+              </div>
+            </div>
+          ) : (
+            <div className="p-1.5 bg-muted rounded-md group-hover:bg-primary/10 group-hover:text-primary transition-colors flex-shrink-0">
+              {item.type === "FOLDER" ? (
+                <Folder weight="fill" size={20} className="text-yellow-500" />
+              ) : (
+                <div className="scale-90 origin-left">
+                  {getFileIcon(item.mimeType, item.name)}
+                </div>
+              )}
+            </div>
+          )}
           {renameNodeId === item.id ? (
             <div className="flex items-center gap-1 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
               <input
@@ -2336,6 +2490,17 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
       <ContextMenuTrigger render={rowContent} />
 
       <ContextMenuContent className="w-48 bg-card/85 backdrop-blur-md border border-border/80 shadow-lg rounded-xl p-1.5 animate-in fade-in-50 duration-100 select-none">
+        <ContextMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            onEnableMultiSelect(item.id);
+          }}
+          className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
+        >
+          <CheckSquareOffset size={16} />
+          <span>Select Multiple</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator className="-mx-1.5 my-1 h-px bg-border/50" />
         <ContextMenuItem
           onClick={() => toggleStar(item)}
           className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-muted text-foreground cursor-pointer transition-colors"
