@@ -131,34 +131,87 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
   const [actionLoading, setActionLoading] = React.useState<string | null>(null)
   const [emptyDialogOpen, setEmptyDialogOpen] = React.useState(false)
   const [viewMode, setViewMode] = React.useState<"grid" | "list">("list")
+  const [nextCursor, setNextCursor] = React.useState<string | null>(null)
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false)
+
+  const handleLoadMore = React.useCallback(() => {
+    if ((window as any)._loadMoreTrashFiles) {
+      ;(window as any)._loadMoreTrashFiles()
+    }
+  }, [])
+
+  const observerRef = React.useRef<IntersectionObserver | null>(null)
+  const loadMoreRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      if (isLoadingMore) return
+      if (observerRef.current) observerRef.current.disconnect()
+
+      observerRef.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && nextCursor) {
+          handleLoadMore()
+        }
+      })
+
+      if (node) observerRef.current.observe(node)
+    },
+    [isLoadingMore, nextCursor, handleLoadMore]
+  )
 
   React.useEffect(() => {
     const saved = localStorage.getItem("lumora-view-mode") as "grid" | "list";
     if (saved === "grid" || saved === "list") setViewMode(saved);
   }, []);
   // ── Fetch trashed nodes ──────────────────────────────────────────────────
-  const fetchTrash = React.useCallback(async () => {
+  const fetchTrash = React.useCallback(async (cursor: string | null = null, isLoadMore: boolean = false) => {
     if (!isReady) return
-    setLoading(true)
+    if (isLoadMore) {
+      setIsLoadingMore(true)
+    } else {
+      setLoading(true)
+    }
     try {
-      const res = await fetch("/api/nodes/trash")
+      let endpoint = "/api/nodes/trash?limit=50"
+      if (cursor) {
+        endpoint += `&cursor=${cursor}`
+      }
+      const res = await fetch(endpoint)
       if (res.ok) {
         const json = await res.json()
-        setItems(json.nodes || [])
-        const fMap = new Map()
-        ;(json.folders || []).forEach((f: any) => fMap.set(f.id, f))
+        if (isLoadMore) {
+          setItems(prev => [...prev, ...(json.nodes || [])])
+        } else {
+          setItems(json.nodes || [])
+        }
+        setNextCursor(json.nextCursor || null)
+        
+        const fMap = isLoadMore ? new Map(foldersMap) : new Map()
+        if (!isLoadMore) {
+          ;(json.folders || []).forEach((f: any) => fMap.set(f.id, f))
+        }
         setFoldersMap(fMap)
       }
     } catch (err) {
       console.error("Failed to fetch trash", err)
     } finally {
       setLoading(false)
+      setIsLoadingMore(false)
     }
-  }, [isReady])
+  }, [isReady, foldersMap])
 
   React.useEffect(() => {
     fetchTrash()
-  }, [fetchTrash, refreshTrigger])
+    
+    ;(window as any)._loadMoreTrashFiles = () => {
+      if (nextCursor && !isLoadingMore) {
+        fetchTrash(nextCursor, true)
+      }
+    }
+
+    return () => {
+      delete (window as any)._loadMoreTrashFiles
+    }
+  }, [fetchTrash, refreshTrigger, nextCursor, isLoadingMore])
+
 
   // ── Decrypt node names client-side ──────────────────────────────────────
   React.useEffect(() => {
@@ -442,16 +495,30 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
       ) : decryptedItems.length === 0 ? (
         <EmptyTrash />
       ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {decryptedItems.map((item) => (
-            <TrashCard
-              key={item.id}
-              item={item}
-              actionLoading={actionLoading}
-              onRestore={handleRestore}
-              onDeleteForever={handleDeleteForever}
-            />
-          ))}
+        <div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {decryptedItems.map((item) => (
+              <TrashCard
+                key={item.id}
+                item={item}
+                actionLoading={actionLoading}
+                onRestore={handleRestore}
+                onDeleteForever={handleDeleteForever}
+              />
+            ))}
+          </div>
+          {nextCursor && (
+            <div ref={loadMoreRef} className="py-6 flex justify-center items-center">
+              {isLoadingMore ? (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  Loading more...
+                </div>
+              ) : (
+                <div className="h-6" /> // spacer to trigger observer
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="border border-border rounded-xl bg-card overflow-hidden shadow-sm">
@@ -482,6 +549,18 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
               ))}
             </tbody>
           </table>
+          {nextCursor && (
+            <div ref={loadMoreRef} className="py-6 flex justify-center items-center">
+              {isLoadingMore ? (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  Loading more...
+                </div>
+              ) : (
+                <div className="h-6" /> // spacer to trigger observer
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

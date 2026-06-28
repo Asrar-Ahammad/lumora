@@ -15,8 +15,13 @@ const r2 = new S3Client({
 
 const TRASH_TTL_DAYS = 30;
 
-const getTrashNodes = async (userId: string) => {
+const getTrashNodes = async (userId: string, cursor: string | null, limit: number) => {
+  const take = limit + 1;
+  const skip = cursor ? 1 : 0;
+  const cursorObj = cursor ? { id: cursor } : undefined;
+
   return await prisma.node.findMany({
+    take, skip, cursor: cursorObj,
     where: {
       userId,
       trashedAt: { not: null },
@@ -38,6 +43,10 @@ export async function GET(req: Request) {
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const { searchParams } = new URL(req.url);
+    const cursor = searchParams.get("cursor");
+    const limit = parseInt(searchParams.get("limit") || "50", 10);
 
     // Auto-purge nodes that have been in trash > 30 days
     const cutoff = new Date(Date.now() - TRASH_TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -74,7 +83,13 @@ export async function GET(req: Request) {
     }
 
     // Fetch remaining trashed nodes
-    const trashedNodes = await getTrashNodes(userId);
+    const trashedNodes = await getTrashNodes(userId, cursor, limit);
+    let nextCursor: string | null = null;
+    
+    if (trashedNodes.length > limit) {
+      const nextItem = trashedNodes.pop();
+      nextCursor = nextItem!.id;
+    }
 
     // Fetch all folders (including trashed ones) for key cascade decryption
     const folders = await getTrashFolders(userId);
@@ -94,7 +109,7 @@ export async function GET(req: Request) {
       sizeBytes: f.sizeBytes ? f.sizeBytes.toString() : null,
     }));
 
-    return NextResponse.json({ nodes: serialized, folders: serializedFolders });
+    return NextResponse.json({ nodes: serialized, folders: serializedFolders, nextCursor });
   } catch (error) {
     console.error("Trash GET error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

@@ -3,10 +3,15 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { unstable_cache, revalidateTag } from "next/cache";
 
-const getNodes = async (userId: string, category: string | null, parentId: string | null) => {
+const getNodes = async (userId: string, category: string | null, parentId: string | null, cursor: string | null, limit: number) => {
+  const take = limit + 1;
+  const skip = cursor ? 1 : 0;
+  const cursorObj = cursor ? { id: cursor } : undefined;
+
   if (category) {
     if (category === "documents") {
       return await prisma.node.findMany({
+        take, skip, cursor: cursorObj,
         where: {
           userId,
           type: "FILE",
@@ -21,6 +26,7 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
       });
     } else if (category === "photos" || category === "media") {
       return await prisma.node.findMany({
+        take, skip, cursor: cursorObj,
         where: {
           userId,
           type: "FILE",
@@ -31,6 +37,7 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
       });
     } else if (category === "videos") {
       return await prisma.node.findMany({
+        take, skip, cursor: cursorObj,
         where: {
           userId,
           type: "FILE",
@@ -41,6 +48,7 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
       });
     } else if (category === "audio") {
       return await prisma.node.findMany({
+        take, skip, cursor: cursorObj,
         where: {
           userId,
           type: "FILE",
@@ -51,6 +59,7 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
       });
     } else if (category === "starred") {
       return await prisma.node.findMany({
+        take, skip, cursor: cursorObj,
         where: {
           userId,
           starred: true,
@@ -61,12 +70,14 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
     } else {
       // all files/folders (excluding trash)
       return await prisma.node.findMany({
+        take, skip, cursor: cursorObj,
         where: { userId, trashedAt: null },
         orderBy: { createdAt: "desc" },
       });
     }
   } else if (parentId) {
     return await prisma.node.findMany({
+      take, skip, cursor: cursorObj,
       where: {
         userId,
         parentId,
@@ -88,15 +99,16 @@ const getFolders = async (userId: string) => {
   });
 };
 
-const getFiles = async (userId: string) => {
-  return await prisma.node.findMany({
+const getFileStats = async (userId: string) => {
+  return await prisma.node.groupBy({
+    by: ['parentId'],
     where: {
       userId,
       type: "FILE",
       trashedAt: null,
+      parentId: { not: null }
     },
-    select: {
-      parentId: true,
+    _sum: {
       sizeBytes: true,
     },
   });
@@ -112,16 +124,25 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const parentId = searchParams.get("parentId");
     const category = searchParams.get("category");
+    const cursor = searchParams.get("cursor");
+    const limit = parseInt(searchParams.get("limit") || "50", 10);
 
     if (!category && !parentId) {
       return NextResponse.json({ error: "Missing parentId or category" }, { status: 400 });
     }
 
-    const nodes = await getNodes(userId, category, parentId);
-    const folders = await getFolders(userId);
-    const files = await getFiles(userId);
+    const nodes = await getNodes(userId, category, parentId, cursor, limit);
+    let nextCursor: string | null = null;
+    
+    if (nodes.length > limit) {
+      const nextItem = nodes.pop();
+      nextCursor = nextItem!.id;
+    }
 
-    // Compute folder sizes recursively
+    const folders = await getFolders(userId);
+    const fileStats = await getFileStats(userId);
+
+    // Compute folder sizes recursively using aggregated stats
     const folderSizes = new Map<string, bigint>();
     const addSizeToFolder = (folderId: string, size: bigint) => {
       let currentId: string | null = folderId;
@@ -133,9 +154,9 @@ export async function GET(req: Request) {
       }
     };
 
-    for (const file of files) {
-      if (file.parentId && file.sizeBytes) {
-        addSizeToFolder(file.parentId, BigInt(file.sizeBytes));
+    for (const stat of fileStats) {
+      if (stat.parentId && stat._sum.sizeBytes) {
+        addSizeToFolder(stat.parentId, BigInt(stat._sum.sizeBytes.toString()));
       }
     }
 
@@ -155,6 +176,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       nodes: serializedNodes,
       folders: serializedFolders,
+      nextCursor,
     });
   } catch (error) {
     console.error("Nodes GET error:", error);

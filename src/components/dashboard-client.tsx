@@ -73,6 +73,16 @@ export function DashboardClient() {
   }, []);
 
   const [activeCategory, setActiveCategory] = React.useState("drive");
+  // Track which panels have been visited for lazy mounting (cache on first visit)
+  const [visitedPanels, setVisitedPanels] = React.useState<Set<string>>(() => new Set(["drive"]));
+  React.useEffect(() => {
+    setVisitedPanels((prev) => {
+      if (prev.has(activeCategory)) return prev;
+      const next = new Set(prev);
+      next.add(activeCategory);
+      return next;
+    });
+  }, [activeCategory]);
   const [currentFolderId, setCurrentFolderId] = React.useState<string | null>(null);
   const [currentFolderKey, setCurrentFolderKey] = React.useState<CryptoKey | null>(null);
   const [breadcrumbs, setBreadcrumbs] = React.useState<{ id: string; name: string }[]>([]);
@@ -486,7 +496,7 @@ export function DashboardClient() {
   }, []);
 
   // Traverse to a folder
-  const handleNavigate = (
+  const handleNavigate = React.useCallback((
     folderId: string | null,
     folderName?: string,
     folderKey?: CryptoKey | null
@@ -495,12 +505,15 @@ export function DashboardClient() {
     setActiveCategory("drive");
 
     // Reconstruct breadcrumbs
-    const index = breadcrumbs.findIndex((b) => b.id === folderId);
-    if (index !== -1) {
-      setBreadcrumbs(breadcrumbs.slice(0, index + 1));
-    } else if (folderName) {
-      setBreadcrumbs([...breadcrumbs, { id: folderId, name: folderName }]);
-    }
+    setBreadcrumbs(prev => {
+      const index = prev.findIndex((b) => b.id === folderId);
+      if (index !== -1) {
+        return prev.slice(0, index + 1);
+      } else if (folderName) {
+        return [...prev, { id: folderId, name: folderName }];
+      }
+      return prev;
+    });
 
     // Retrieve key from cache or arguments
     const key = folderKey || nodeKeysCache.current.get(folderId) || null;
@@ -508,6 +521,7 @@ export function DashboardClient() {
     if (key) {
       setCurrentFolderKey(key);
       setCurrentFolderId(folderId);
+      nodeKeysCache.current.set(folderId, key);
       setSelectedNode(null);
       setIsInfoPanelOpen(false);
     } else {
@@ -537,7 +551,7 @@ export function DashboardClient() {
       };
       loadFolderFallback();
     }
-  };
+  }, [decryptNodeKeyCascade]);
 
   const handleSelectFileFromSearch = React.useCallback(
     (node: any) => {
@@ -692,45 +706,59 @@ export function DashboardClient() {
         )}
 
         <main className="flex-1 flex overflow-hidden">
-          {activeCategory === "settings" ? (
-            <SettingsPanel 
-              aiSearchEnabled={isAISearch}
-              onToggleAISearch={async (enabled) => {
-                const res = await fetch("/api/user/settings", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ aiSearchEnabled: enabled }),
-                });
-                if (res.ok) setIsAISearch(enabled);
-              }}
-            />
-          ) : activeCategory === "trash" ? (
-            /* Trash Panel – no extra padding, owns its own header */
-            <TrashPanel
-              refreshTrigger={refreshTrigger}
-              onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
-            />
-          ) : activeCategory === "storage" ? (
-            <StoragePanel
-              onSelectNode={(node, openPanel) => {
-                setSelectedNode(node);
-                if (openPanel) {
-                  setIsInfoPanelOpen(true);
-                }
-              }}
-              selectedNodeId={selectedNode?.id || null}
-              refreshTrigger={refreshTrigger}
-              onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
-            />
-          ) : (
-            /* File explorer main panel */
-            <div 
-              className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col pb-28"
-              onClick={() => {
-                setSelectedNode(null);
-                setIsInfoPanelOpen(false);
-              }}
-            >
+          {/* === Settings Panel (cached via display toggle) === */}
+          {visitedPanels.has("settings") && (
+            <div style={{ display: activeCategory === "settings" ? "contents" : "none" }}>
+              <SettingsPanel 
+                aiSearchEnabled={isAISearch}
+                onToggleAISearch={async (enabled) => {
+                  const res = await fetch("/api/user/settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ aiSearchEnabled: enabled }),
+                  });
+                  if (res.ok) setIsAISearch(enabled);
+                }}
+              />
+            </div>
+          )}
+
+          {/* === Trash Panel (cached via display toggle) === */}
+          {visitedPanels.has("trash") && (
+            <div style={{ display: activeCategory === "trash" ? "contents" : "none" }}>
+              <TrashPanel
+                refreshTrigger={refreshTrigger}
+                onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
+              />
+            </div>
+          )}
+
+          {/* === Storage Panel (cached via display toggle) === */}
+          {visitedPanels.has("storage") && (
+            <div style={{ display: activeCategory === "storage" ? "contents" : "none" }}>
+              <StoragePanel
+                onSelectNode={(node, openPanel) => {
+                  setSelectedNode(node);
+                  if (openPanel) {
+                    setIsInfoPanelOpen(true);
+                  }
+                }}
+                selectedNodeId={selectedNode?.id || null}
+                refreshTrigger={refreshTrigger}
+                onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
+              />
+            </div>
+          )}
+
+          {/* === File explorer main panel (drive, starred, documents, photos, etc.) — cached === */}
+          <div 
+            style={{ display: !["settings", "trash", "storage"].includes(activeCategory) ? "flex" : "none" }}
+            className="flex-1 overflow-y-auto p-4 md:p-6 flex-col pb-28"
+            onClick={() => {
+              setSelectedNode(null);
+              setIsInfoPanelOpen(false);
+            }}
+          >
 
               {/* Folder explorer header & actions */}
               <div 
@@ -864,7 +892,6 @@ export function DashboardClient() {
               </div>
             )}
           </div>
-          )} {/* end activeCategory !== "trash" */}
 
           {/* Collapsible right-hand detail panel – desktop */}
           {selectedNode && isInfoPanelOpen && activeCategory !== "trash" && (

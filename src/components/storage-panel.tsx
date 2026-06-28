@@ -86,6 +86,8 @@ export function StoragePanel({
   const [loading, setLoading] = React.useState(true);
   const [files, setFiles] = React.useState<DecryptedFile[]>([]);
   const [totalSize, setTotalSize] = React.useState(0);
+  const [nextCursor, setNextCursor] = React.useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   
   // Storage categories breakdown sizes
   const [stats, setStats] = React.useState({
@@ -94,6 +96,29 @@ export function StoragePanel({
     audio: 0,
     archive: 0
   });
+
+  const handleLoadMore = React.useCallback(() => {
+    if ((window as any)._loadMoreStorageFiles) {
+      (window as any)._loadMoreStorageFiles();
+    }
+  }, []);
+
+  const observerRef = React.useRef<IntersectionObserver | null>(null);
+  const loadMoreRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      if (isLoadingMore) return;
+      if (observerRef.current) observerRef.current.disconnect();
+
+      observerRef.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && nextCursor) {
+          handleLoadMore();
+        }
+      });
+
+      if (node) observerRef.current.observe(node);
+    },
+    [isLoadingMore, nextCursor, handleLoadMore]
+  );
 
   // Filter & Sort States
   const [typeFilter, setTypeFilter] = React.useState<"all" | "docs" | "media" | "audio" | "others">("all");
@@ -133,24 +158,43 @@ export function StoragePanel({
     if (!isReady || !cryptoKey) return;
     let active = true;
 
-    async function loadFiles() {
-      setLoading(true);
+    async function loadFiles(cursor: string | null = null, isLoadMore: boolean = false) {
+      if (!isLoadMore) {
+        setLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
+
       try {
-        const res = await fetch("/api/nodes?category=all");
+        if (!isLoadMore) {
+          // Fetch stats only on initial load
+          const statsRes = await fetch("/api/user/storage-stats");
+          if (statsRes.ok) {
+            const statsJson = await statsRes.json();
+            if (active) {
+              setTotalSize(statsJson.total || 0);
+              setStats(statsJson.stats || { documents: 0, media: 0, audio: 0, archive: 0 });
+            }
+          }
+        }
+
+        let endpoint = `/api/nodes?category=all&limit=50`;
+        if (cursor) {
+          endpoint += `&cursor=${cursor}`;
+        }
+        
+        const res = await fetch(endpoint);
         if (!res.ok) throw new Error("Failed to fetch nodes");
         const json = await res.json();
         
         const rawNodes = json.nodes || [];
         const folders = json.folders || [];
+        const returnedNextCursor = json.nextCursor || null;
+
         const fMap = new Map();
         folders.forEach((f: any) => fMap.set(f.id, f));
 
         const decryptedFiles: DecryptedFile[] = [];
-        let total = 0;
-        let docs = 0;
-        let media = 0;
-        let audio = 0;
-        let archive = 0;
 
         for (const item of rawNodes) {
           if (item.type !== "FILE") continue;
@@ -166,30 +210,6 @@ export function StoragePanel({
               name = parsed.name || parsed.filename;
               fileIv = parsed.fileIv;
             } catch {}
-
-            const size = item.sizeBytes ? parseInt(item.sizeBytes) : 0;
-            total += size;
-
-            const mime = item.mimeType ? item.mimeType.toLowerCase() : "";
-            if (mime.startsWith("image/") || mime.startsWith("video/")) {
-              media += size;
-            } else if (mime.startsWith("audio/")) {
-              audio += size;
-            } else if (
-              mime.startsWith("text/") ||
-              mime === "application/pdf" ||
-              mime.includes("document") ||
-              mime.includes("sheet") ||
-              mime.includes("presentation") ||
-              mime.includes("msword") ||
-              mime.includes("wordprocessingml") ||
-              mime.includes("spreadsheetml") ||
-              mime.includes("powerpoint")
-            ) {
-              docs += size;
-            } else {
-              archive += size;
-            }
 
             decryptedFiles.push({
               id: item.id,
@@ -208,27 +228,37 @@ export function StoragePanel({
         }
 
         if (active) {
-          setFiles(decryptedFiles);
-          setTotalSize(total);
-          setStats({
-            documents: docs,
-            media,
-            audio,
-            archive
-          });
+          setNextCursor(returnedNextCursor);
+          if (isLoadMore) {
+            setFiles(prev => [...prev, ...decryptedFiles]);
+          } else {
+            setFiles(decryptedFiles);
+          }
         }
       } catch (err) {
         console.error("Failed to load files for storage breakdown", err);
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          setIsLoadingMore(false);
+        }
       }
     }
 
     loadFiles();
+    
+    (window as any)._loadMoreStorageFiles = () => {
+      if (nextCursor && !isLoadingMore) {
+        loadFiles(nextCursor, true);
+      }
+    };
+
     return () => {
       active = false;
+      delete (window as any)._loadMoreStorageFiles;
     };
-  }, [isReady, cryptoKey, refreshTrigger, decryptNodeKeyCascade]);
+  }, [isReady, cryptoKey, refreshTrigger, decryptNodeKeyCascade, nextCursor, isLoadingMore]);
+
 
   // Handle document deletion
   const handleDelete = async (id: string, e: React.MouseEvent) => {

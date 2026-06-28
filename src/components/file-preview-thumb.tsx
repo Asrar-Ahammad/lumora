@@ -101,7 +101,7 @@ export function FilePreviewThumb({ node, nodeKey }: FilePreviewThumbProps) {
       active = false
       if (localBlobUrl) URL.revokeObjectURL(localBlobUrl)
     }
-  }, [node, nodeKey, shouldPreview])
+  }, [node, nodeKey, shouldPreview, isText])
 
   if (!shouldPreview || error) {
     return (

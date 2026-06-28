@@ -99,10 +99,12 @@ export function MediaGallery({
   const { decryptNodeKeyCascade, cryptoKey, isReady } = useCrypto()
   const { toast } = useToast()
 
-  const decryptedCache = React.useRef<Map<string, { decNodes: DecryptedNodeData[]; foldersMap: Map<string, any> }>>(new Map())
+  const decryptedCache = React.useRef<Map<string, { decNodes: DecryptedNodeData[]; foldersMap: Map<string, any>; nextCursor: string | null }>>(new Map())
   const [foldersMap, setFoldersMap] = React.useState<Map<string, any>>(new Map())
   const [loading, setLoading] = React.useState(true)
   const [decryptedItems, setDecryptedItems] = React.useState<DecryptedNodeData[]>([])
+  const [nextCursor, setNextCursor] = React.useState<string | null>(null)
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false)
 
   // Viewer state
   const [viewerNode, setViewerNode] = React.useState<any | null>(null)
@@ -731,19 +733,25 @@ export function MediaGallery({
 
     let active = true;
 
-    async function fetchAndDecryptNodes() {
+    async function fetchAndDecryptNodes(cursor: string | null = null, isLoadMore: boolean = false) {
       const cacheKey = `${currentFolderId || "root"}-${activeCategory}-${debouncedQuery}`;
-      const cached = decryptedCache.current.get(cacheKey);
-
-      // Only serve from cache if we've mounted before (not first load)
-      // This prevents showing stale/empty results on initial page load
-      if (cached && hasMounted.current) {
-        setDecryptedItems(cached.decNodes);
-        setFoldersMap(cached.foldersMap);
-        setLoading(false);
+      
+      if (!isLoadMore) {
+        const cached = decryptedCache.current.get(cacheKey);
+        // Only serve from cache if we've mounted before (not first load)
+        if (cached && hasMounted.current) {
+          setDecryptedItems(cached.decNodes);
+          setFoldersMap(cached.foldersMap);
+          setNextCursor(cached.nextCursor);
+          setLoading(false);
+          return;
+        } else {
+          setDecryptedItems([]);
+          setNextCursor(null);
+          setLoading(true);
+        }
       } else {
-        setDecryptedItems([]);
-        setLoading(true);
+        setIsLoadingMore(true);
       }
 
       try {
@@ -753,16 +761,25 @@ export function MediaGallery({
         } else if (activeCategory !== "drive") {
           endpoint = `/api/nodes?category=${activeCategory}`;
         }
+        
+        const sep = endpoint.includes("?") ? "&" : "?";
+        endpoint += `${sep}limit=50`;
+        if (cursor) {
+          endpoint += `&cursor=${cursor}`;
+        }
 
         const res = await fetch(endpoint);
         if (res.ok && active) {
           const json = await res.json();
           const rawNodes: NodeData[] = json.nodes || [];
+          const returnedNextCursor = json.nextCursor || null;
 
-          const fMap = new Map();
-          (json.folders || []).forEach((f: any) => {
-            fMap.set(f.id, f);
-          });
+          const fMap = isLoadMore ? new Map(foldersMap) : new Map();
+          if (!isLoadMore) {
+            (json.folders || []).forEach((f: any) => {
+              fMap.set(f.id, f);
+            });
+          }
 
           // Decrypt all nodes client-side
           const list: DecryptedNodeData[] = [];
@@ -828,8 +845,18 @@ export function MediaGallery({
 
           if (active) {
             setFoldersMap(fMap);
-            setDecryptedItems(list);
-            decryptedCache.current.set(cacheKey, { decNodes: list, foldersMap: fMap });
+            setNextCursor(returnedNextCursor);
+            
+            if (isLoadMore) {
+              setDecryptedItems(prev => {
+                const combined = [...prev, ...list];
+                decryptedCache.current.set(cacheKey, { decNodes: combined, foldersMap: fMap, nextCursor: returnedNextCursor });
+                return combined;
+              });
+            } else {
+              setDecryptedItems(list);
+              decryptedCache.current.set(cacheKey, { decNodes: list, foldersMap: fMap, nextCursor: returnedNextCursor });
+            }
             hasMounted.current = true;
           }
         }
@@ -838,16 +865,31 @@ export function MediaGallery({
       } finally {
         if (active) {
           setLoading(false);
+          setIsLoadingMore(false);
         }
       }
     }
 
     fetchAndDecryptNodes();
 
+    // Attach to window so we can trigger loadMore from outside the effect
+    (window as any)._loadMoreNodes = () => {
+      if (nextCursor && !isLoadingMore) {
+        fetchAndDecryptNodes(nextCursor, true);
+      }
+    };
+
     return () => {
       active = false;
+      delete (window as any)._loadMoreNodes;
     };
-  }, [currentFolderId, debouncedQuery, activeCategory, refreshTrigger, isReady, decryptNodeKeyCascade]);
+  }, [currentFolderId, debouncedQuery, activeCategory, refreshTrigger, isReady, decryptNodeKeyCascade, nextCursor, isLoadingMore, foldersMap]);
+  
+  const handleLoadMore = React.useCallback(() => {
+    if ((window as any)._loadMoreNodes) {
+      (window as any)._loadMoreNodes();
+    }
+  }, []);
 
   // Filter out unstarred items in Starred category without full refetch
   const displayItems = React.useMemo(() => {
@@ -888,6 +930,9 @@ export function MediaGallery({
         onDownloadNode={handleDownloadNode}
         toggleStar={handleToggleStar}
         isInfoPanelOpen={isInfoPanelOpen}
+        hasMore={!!nextCursor}
+        isLoadingMore={isLoadingMore}
+        onLoadMore={handleLoadMore}
       />
       {pickerOpen && (
         <DestinationPickerModal
@@ -1087,8 +1132,24 @@ function MediaGalleryContent({
   viewerNode, viewerKey, setViewerNode, setViewerKey, localQuery,
   onTriggerUpload, onTriggerCreateFolder, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly,
   renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar,
-  isInfoPanelOpen
+  isInfoPanelOpen, hasMore, isLoadingMore, onLoadMore
 }: any) {
+  const observerRef = React.useRef<IntersectionObserver | null>(null);
+  const loadMoreRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      if (isLoadingMore) return;
+      if (observerRef.current) observerRef.current.disconnect();
+
+      observerRef.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore) {
+          onLoadMore();
+        }
+      });
+
+      if (node) observerRef.current.observe(node);
+    },
+    [isLoadingMore, hasMore, onLoadMore]
+  );
   const [sortKey, setSortKey] = React.useState<"name" | "size" | "createdAt">("name");
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc");
 
@@ -1304,6 +1365,22 @@ function MediaGalleryContent({
             ))}
           </tbody>
         </table>
+      </div>
+    );
+  };
+
+  const renderLoadMoreIndicator = () => {
+    if (!hasMore) return null;
+    return (
+      <div ref={loadMoreRef} className="py-6 flex justify-center items-center">
+        {isLoadingMore ? (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm">
+            <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            Loading more...
+          </div>
+        ) : (
+          <div className="h-6" /> // spacer to trigger observer
+        )}
       </div>
     );
   };
@@ -1538,6 +1615,7 @@ function MediaGalleryContent({
       <>
         <div className="flex-1 w-full min-h-[450px]">
           {renderContent()}
+          {renderLoadMoreIndicator()}
         </div>
         {renderSharedControls()}
       </>
@@ -1549,6 +1627,7 @@ function MediaGalleryContent({
       <ContextMenu>
         <ContextMenuTrigger className="flex-1 w-full min-h-[450px] block">
           {renderContent()}
+          {renderLoadMoreIndicator()}
         </ContextMenuTrigger>
 
         {/* Canvas Context Menu Options */}
