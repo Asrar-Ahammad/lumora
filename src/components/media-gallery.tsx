@@ -1340,6 +1340,7 @@ function MediaGalleryContent({
             setRenameNodeId={setRenameNodeId}
             onRenameSubmit={onRenameSubmit}
             onDownloadNode={onDownloadNode}
+            toggleStar={toggleStar}
             onOptionsClick={handleOptionsClick}
             isDropdownOpen={dropdownOpenId === item.id}
             isMultiSelectMode={isMultiSelectMode}
@@ -1421,7 +1422,7 @@ function MediaGalleryContent({
                 onOptionsClick={handleOptionsClick}
                 isDropdownOpen={dropdownOpenId === item.id}
                 onDownloadNode={onDownloadNode}
-                toggleStar={handleToggleStar}
+                toggleStar={toggleStar}
                 isMultiSelectMode={isMultiSelectMode}
                 selectedItemIds={selectedItemIds}
                 onToggleSelect={handleToggleSelect}
