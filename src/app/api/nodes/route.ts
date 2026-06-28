@@ -16,6 +16,7 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
           userId,
           type: "FILE",
           trashedAt: null,
+          isSecure: false,
           NOT: [
             { mimeType: { startsWith: "image/" } },
             { mimeType: { startsWith: "video/" } },
@@ -31,6 +32,7 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
           userId,
           type: "FILE",
           trashedAt: null,
+          isSecure: false,
           mimeType: { startsWith: "image/" },
         },
         orderBy: { createdAt: "desc" },
@@ -42,6 +44,7 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
           userId,
           type: "FILE",
           trashedAt: null,
+          isSecure: false,
           mimeType: { startsWith: "video/" },
         },
         orderBy: { createdAt: "desc" },
@@ -53,6 +56,7 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
           userId,
           type: "FILE",
           trashedAt: null,
+          isSecure: false,
           mimeType: { startsWith: "audio/" },
         },
         orderBy: { createdAt: "desc" },
@@ -64,14 +68,15 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
           userId,
           starred: true,
           trashedAt: null,
+          isSecure: false,
         },
         orderBy: { createdAt: "desc" },
       });
     } else {
-      // all files/folders (excluding trash)
+      // all files/folders (excluding trash and secure)
       return await prisma.node.findMany({
         take, skip, cursor: cursorObj,
-        where: { userId, trashedAt: null },
+        where: { userId, trashedAt: null, isSecure: false },
         orderBy: { createdAt: "desc" },
       });
     }
@@ -82,6 +87,7 @@ const getNodes = async (userId: string, category: string | null, parentId: strin
         userId,
         parentId,
         trashedAt: null,
+        isSecure: false,
       },
       orderBy: { createdAt: "desc" },
     });
@@ -95,6 +101,7 @@ const getFolders = async (userId: string) => {
       userId,
       type: "FOLDER",
       trashedAt: null,
+      isSecure: false,
     },
   });
 };
@@ -106,6 +113,7 @@ const getFileStats = async (userId: string) => {
       userId,
       type: "FILE",
       trashedAt: null,
+      isSecure: false,
       parentId: { not: null }
     },
     _sum: {
@@ -331,7 +339,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { nameEnc, nameIV, starred } = body;
+    const { nameEnc, nameIV, starred, isSecure } = body;
 
     const updateData: any = {};
     if (nameEnc !== undefined && nameIV !== undefined) {
@@ -340,6 +348,9 @@ export async function PATCH(req: Request) {
     }
     if (starred !== undefined) {
       updateData.starred = starred;
+    }
+    if (isSecure !== undefined) {
+      updateData.isSecure = isSecure;
     }
 
     if (Object.keys(updateData).length === 0) {

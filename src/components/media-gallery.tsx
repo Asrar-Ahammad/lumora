@@ -12,7 +12,7 @@ import {
   FileText, Info, Download, Trash, Eye, CaretRight, ShieldCheck,
   CheckCircle, XCircle, FolderOpen, ArrowSquareOut, Copy, UploadSimple,
   FolderPlus, Warning, PencilSimple, DotsThreeVertical, Check, X,
-  ArrowUp, ArrowDown, User, Play, Image as ImageIcon, FileDoc, FileXls, FilePpt, FileZip, Star, CheckSquareOffset
+  ArrowUp, ArrowDown, User, Play, Image as ImageIcon, FileDoc, FileXls, FilePpt, FileZip, Star, CheckSquareOffset, LockKey
 } from "@phosphor-icons/react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -78,6 +78,7 @@ interface MediaGalleryProps {
   onTriggerUpload?: () => void;
   onTriggerCreateFolder?: () => void;
   isInfoPanelOpen?: boolean;
+  onMoveToSecure?: (id: string, e?: React.MouseEvent) => void;
 }
 
 export function MediaGallery({
@@ -94,7 +95,8 @@ export function MediaGallery({
   onRefresh,
   onTriggerUpload,
   onTriggerCreateFolder,
-  isInfoPanelOpen
+  isInfoPanelOpen,
+  onMoveToSecure
 }: MediaGalleryProps) {
   const { decryptNodeKeyCascade, cryptoKey, isReady } = useCrypto()
   const { toast } = useToast()
@@ -984,6 +986,7 @@ export function MediaGallery({
         setPickerOpen={setPickerOpen}
         setIsMultiSelectMode={setIsMultiSelectMode}
         setSelectedItemIds={setSelectedItemIds}
+        onMoveToSecure={onMoveToSecure}
       />
       {pickerOpen && (
         <DestinationPickerModal
@@ -1184,7 +1187,8 @@ function MediaGalleryContent({
   renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar,
   isInfoPanelOpen, hasMore, isLoadingMore, onLoadMore,
   isMultiSelectMode, selectedItemIds, handleToggleSelect, handleEnableMultiSelect,
-  setPickerAction, setPickerNodes, setPickerOpen, setIsMultiSelectMode, setSelectedItemIds
+  setPickerAction, setPickerNodes, setPickerOpen, setIsMultiSelectMode, setSelectedItemIds,
+  onMoveToSecure
 }: any) {
   const observerRef = React.useRef<IntersectionObserver | null>(null);
   const loadMoreRef = React.useCallback(
@@ -1342,6 +1346,7 @@ function MediaGalleryContent({
             selectedItemIds={selectedItemIds}
             onToggleSelect={handleToggleSelect}
             onEnableMultiSelect={handleEnableMultiSelect}
+            onMoveToSecure={onMoveToSecure}
           />
         ))}
       </div>
@@ -1416,11 +1421,12 @@ function MediaGalleryContent({
                 onOptionsClick={handleOptionsClick}
                 isDropdownOpen={dropdownOpenId === item.id}
                 onDownloadNode={onDownloadNode}
-                toggleStar={toggleStar}
+                toggleStar={handleToggleStar}
                 isMultiSelectMode={isMultiSelectMode}
                 selectedItemIds={selectedItemIds}
                 onToggleSelect={handleToggleSelect}
                 onEnableMultiSelect={handleEnableMultiSelect}
+                onMoveToSecure={onMoveToSecure}
               />
             ))}
           </tbody>
@@ -1896,7 +1902,7 @@ const getExtension = (name: string, type: string) => {
 };
 
 // GRID ITEM SUBCOMPONENT (Now takes pre-decrypted properties)
-function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar, onOptionsClick, isDropdownOpen, isMultiSelectMode, selectedItemIds, onToggleSelect, onEnableMultiSelect }: any) {
+function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onDownloadNode, toggleStar, onOptionsClick, isDropdownOpen, isMultiSelectMode, selectedItemIds, onToggleSelect, onEnableMultiSelect, onMoveToSecure }: any) {
   const isSelected = isMultiSelectMode ? selectedItemIds.has(item.id) : item.id === selectedNodeId;
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [tempName, setTempName] = React.useState(getBaseName(item.name, item.type));
@@ -2218,6 +2224,15 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
         {item.parentId !== null && (
           <>
             <ContextMenuSeparator className="-mx-1.5 my-1 h-px bg-border/50" />
+            {onMoveToSecure && (
+              <ContextMenuItem
+                onClick={(e: any) => onMoveToSecure(item.id, e)}
+                className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-primary/10 text-primary cursor-pointer transition-colors"
+              >
+                <LockKey size={16} />
+                <span>Move to Secure Folder</span>
+              </ContextMenuItem>
+            )}
             <ContextMenuItem
               onClick={(e: any) => onDelete(item.id, e)}
               className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer transition-colors"
@@ -2233,7 +2248,7 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 }
 
 // LIST ITEM SUBCOMPONENT (Now takes pre-decrypted properties)
-function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onOptionsClick, isDropdownOpen, onDownloadNode, toggleStar, isMultiSelectMode, selectedItemIds, onToggleSelect, onEnableMultiSelect }: any) {
+function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, onDelete, onOpenViewer, onMoveTo, onCopyTo, onRename, onMoveNodeDirectly, renameNodeId, setRenameNodeId, onRenameSubmit, onOptionsClick, isDropdownOpen, onDownloadNode, toggleStar, isMultiSelectMode, selectedItemIds, onToggleSelect, onEnableMultiSelect, onMoveToSecure }: any) {
   const isSelected = isMultiSelectMode ? selectedItemIds.has(item.id) : item.id === selectedNodeId;
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [tempName, setTempName] = React.useState(getBaseName(item.name, item.type));
@@ -2614,6 +2629,15 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
         {item.parentId !== null && (
           <>
             <ContextMenuSeparator className="-mx-1.5 my-1 h-px bg-border/50" />
+            {onMoveToSecure && (
+              <ContextMenuItem
+                onClick={(e: any) => onMoveToSecure(item.id, e)}
+                className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-primary/10 text-primary cursor-pointer transition-colors"
+              >
+                <LockKey size={16} />
+                <span>Move to Secure Folder</span>
+              </ContextMenuItem>
+            )}
             <ContextMenuItem
               onClick={(e: any) => onDelete(item.id, e)}
               className="flex items-center gap-2 px-2.5 py-2 text-sm rounded-lg hover:bg-destructive/10 text-destructive cursor-pointer transition-colors"

@@ -9,10 +9,13 @@ datasource db {
 }
 
 model User {
-  id        String   @id // Clerk userId
-  aiSearch  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  nodes     Node[]
+  id               String   @id // Clerk userId
+  aiSearch         Boolean  @default(false)
+  securePin        String?  // Hashed password/PIN for Secure Folder
+  securityQuestion String?  // Security question for resetting PIN
+  securityAnswer   String?  // Hashed answer for security question
+  createdAt        DateTime @default(now())
+  nodes            Node[]
 }
 
 model Node {
@@ -47,11 +50,13 @@ model Node {
   updatedAt    DateTime @updatedAt
   trashedAt    DateTime? // null = active, set = in trash
   starred      Boolean  @default(false)
+  isSecure     Boolean  @default(false) // belongs to Secure Folder
 
   @@index([userId, parentId])
   @@index([userId, type])
   @@index([userId, trashedAt])
   @@index([userId, starred])
+  @@index([userId, isSecure])
 }
 
 enum NodeType {

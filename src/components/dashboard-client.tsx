@@ -7,6 +7,7 @@ import { UploadModal } from "./upload-modal";
 import { MediaGallery } from "./media-gallery";
 import { SettingsPanel } from "./settings-panel";
 import { TrashPanel } from "./trash-panel";
+import { SecureFolderPanel } from "./secure-folder-panel";
 import { StoragePanel } from "./storage-panel";
 import { useCrypto } from "./crypto-provider";
 import { useUpload } from "./upload-provider";
@@ -17,7 +18,7 @@ import { UniversalSearchDialog } from "./universal-search-dialog";
 import { 
   FolderPlus, GridNine, List, Info, ShieldCheck, Folder, 
   FileText, Calendar, HardDrive, MagnifyingGlass, CloudArrowUp,
-  Question, CheckCircle, XCircle, X, Star
+  Question, CheckCircle, XCircle, X, Star, CaretLeft
 } from "@phosphor-icons/react";
 import { useUser } from "@clerk/nextjs";
 import { useToast } from "@/hooks/use-toast";
@@ -582,6 +583,34 @@ export function DashboardClient() {
     handleNavigate(id);
   };
 
+  // Move to Secure Folder
+  const handleMoveToSecure = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const res = await fetch(`/api/nodes?id=${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isSecure: true })
+      });
+      if (res.ok) {
+        setRefreshTrigger((prev) => prev + 1);
+        toast({
+          title: "Moved to Secure Folder",
+          description: "Item is now protected."
+        });
+      } else {
+        throw new Error("Failed");
+      }
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Move Failed",
+        description: "Could not move to Secure Folder.",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Create folder
   const handleCreateFolder = async () => {
     if (!newFolderName.trim() || !currentFolderId || !currentFolderKey || isCreatingFolder) return;
@@ -751,9 +780,27 @@ export function DashboardClient() {
             </div>
           )}
 
+          {/* === Secure Folder Panel === */}
+          {visitedPanels.has("secure") && (
+            <div style={{ display: activeCategory === "secure" ? "contents" : "none" }}>
+              <SecureFolderPanel
+                onSelectNode={(node, openPanel) => {
+                  setSelectedNode(node);
+                  if (openPanel) {
+                    setIsInfoPanelOpen(true);
+                  }
+                }}
+                selectedNodeId={selectedNode?.id || null}
+                refreshTrigger={refreshTrigger}
+                onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
+                globalFoldersMap={decFoldersMap}
+              />
+            </div>
+          )}
+
           {/* === File explorer main panel (drive, starred, documents, photos, etc.) — cached === */}
           <div 
-            style={{ display: !["settings", "trash", "storage"].includes(activeCategory) ? "flex" : "none" }}
+            style={{ display: !["settings", "trash", "storage", "secure"].includes(activeCategory) ? "flex" : "none" }}
             className="flex-1 overflow-y-auto p-4 md:p-6 flex-col pb-28"
             onClick={() => {
               setSelectedNode(null);
@@ -768,6 +815,15 @@ export function DashboardClient() {
               >
                 {/* Breadcrumbs */}
                 <div className="flex items-center gap-1 md:gap-1.5 flex-wrap text-xs md:text-sm font-medium min-w-0">
+                  {activeCategory === "drive" && breadcrumbs.length > 1 && (
+                    <button
+                      onClick={() => handleBreadcrumbClick(breadcrumbs[breadcrumbs.length - 2].id, breadcrumbs.length - 2)}
+                      className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors border border-transparent hover:border-border mr-1 shrink-0 cursor-pointer"
+                      title="Go back"
+                    >
+                      <CaretLeft size={18} />
+                    </button>
+                  )}
                   {activeCategory !== "drive" ? (
                     <span className="text-foreground capitalize text-base md:text-lg font-semibold tracking-tight">
                       {activeCategory}
@@ -889,6 +945,7 @@ export function DashboardClient() {
                   onTriggerUpload={() => setIsUploadOpen(true)}
                   onTriggerCreateFolder={() => setShowFolderModal(true)}
                   isInfoPanelOpen={isInfoPanelOpen && !!selectedNode}
+                  onMoveToSecure={handleMoveToSecure}
                 />
               </div>
             )}

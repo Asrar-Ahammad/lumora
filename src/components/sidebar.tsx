@@ -4,7 +4,7 @@ import * as React from "react";
 import { 
   Folder, FileText, Star, Video, Archive, HardDrive, 
   Image as ImageIcon, MusicNote, Trash, CaretLeft, CaretRight,
-  Cloud, ShieldCheck, X, Gear
+  Cloud, ShieldCheck, X, Gear, LockKey
 } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -278,6 +278,26 @@ export function Sidebar({
             <li>
               {renderTooltip(
                 <button
+                  onClick={() => setActiveCategory("secure")}
+                  className={`flex items-center transition-colors relative font-medium ${
+                    isCollapsed
+                      ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "secure" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                      : `w-full gap-4 px-4 py-2.5 rounded-full ${activeCategory === "secure" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                  }`}
+                >
+                  <LockKey
+                    size={22}
+                    weight={activeCategory === "secure" ? "fill" : "regular"}
+                    className={`flex-shrink-0 ${activeCategory === "secure" ? "text-primary" : ""}`}
+                  />
+                  {!isCollapsed && <span className="flex-1 text-left truncate">Secure Folder</span>}
+                </button>,
+                "Secure Folder"
+              )}
+            </li>
+            <li>
+              {renderTooltip(
+                <button
                   onClick={() => setActiveCategory("storage")}
                   className={`flex items-center transition-colors relative font-medium ${
                     isCollapsed
@@ -484,6 +504,20 @@ export function Sidebar({
                           {trashCount > 99 ? "99+" : trashCount}
                         </Badge>
                       )}
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => {
+                        setActiveCategory("secure")
+                        setIsMobileOpen?.(false)
+                      }}
+                      className={`flex items-center w-full gap-4 px-4 py-2.5 rounded-full transition-colors font-medium ${
+                        activeCategory === "secure" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"
+                      }`}
+                    >
+                      <LockKey size={22} weight={activeCategory === "secure" ? "fill" : "regular"} className={`flex-shrink-0 ${activeCategory === "secure" ? "text-primary" : ""}`} />
+                      <span className="flex-1 text-left truncate">Secure Folder</span>
                     </button>
                   </li>
                   <li>

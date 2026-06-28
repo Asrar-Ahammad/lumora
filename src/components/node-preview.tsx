@@ -159,7 +159,7 @@ export function NodePreview({ item }: { item: any }) {
   if (isAudio) {
     return (
       <div className="w-full h-24 rounded border border-border/40 bg-muted/10 flex flex-col items-center justify-center p-2 select-none text-muted-foreground gap-1.5">
-        <FileAudio size={24} className="text-primary/70 animate-pulse" />
+        <FileAudio size={24} className="text-primary/70" />
         <div className="flex items-center gap-0.5 h-3 justify-center">
           <div className="w-0.5 h-2 bg-primary/40 rounded-full" />
           <div className="w-0.5 h-3 bg-primary/60 rounded-full" />

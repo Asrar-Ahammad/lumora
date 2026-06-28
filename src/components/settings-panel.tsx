@@ -5,16 +5,28 @@ import {
   X, ShieldCheck, Warning, Key, CaretRight,
   ToggleLeft, ToggleRight, Gear, CheckCircle, XCircle,
   Bell, BellSlash, DownloadSimple, Export, Plus, DeviceMobile,
-  Sun, Moon
+  Sun, Moon, Eye, EyeSlash
 } from "@phosphor-icons/react"
 import { useCrypto } from "./crypto-provider"
 import { useToast } from "@/hooks/use-toast"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { subscribeUser, unsubscribeUser, sendNotification } from "@/app/pwa-actions"
 import { useTheme } from "next-themes"
 import { flushSync } from "react-dom"
 
 interface SettingsPanelProps {
-
   aiSearchEnabled: boolean;
   onToggleAISearch: (enabled: boolean) => Promise<void>;
 }
@@ -44,10 +56,38 @@ export function SettingsPanel({
   const [isUpdating, setIsUpdating] = React.useState(false)
   const [passphraseInput, setPassphraseInput] = React.useState("")
 
+  // Secure Folder state
+  const [secureSetup, setSecureSetup] = React.useState(false)
+  const [secureLoading, setSecureLoading] = React.useState(true)
+  const [newPin, setNewPin] = React.useState("")
+  const [securityQuestion, setSecurityQuestion] = React.useState("")
+  const [fetchedQuestion, setFetchedQuestion] = React.useState<string | null>(null)
+  const [securityAnswer, setSecurityAnswer] = React.useState("")
+  const [oldPin, setOldPin] = React.useState("")
+
   // State variables for PWA & Push Notifications
   const [isSupported, setIsSupported] = React.useState(false)
   const [subscription, setSubscription] = React.useState<PushSubscription | null>(null)
   const [messageInput, setMessageInput] = React.useState("")
+
+  // Fetch Secure Folder Status
+  React.useEffect(() => {
+    async function checkSecureSetup() {
+      try {
+        const res = await fetch("/api/user/secure-folder");
+        if (res.ok) {
+          const data = await res.json();
+          setSecureSetup(data.setup);
+          setFetchedQuestion(data.question);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setSecureLoading(false);
+      }
+    }
+    checkSecureSetup();
+  }, []);
   const [isSubscribing, setIsSubscribing] = React.useState(false)
   const [isSendingTest, setIsSendingTest] = React.useState(false)
   const [isIOS, setIsIOS] = React.useState(false)
@@ -129,6 +169,115 @@ export function SettingsPanel({
     }
   };
 
+  // --- Secure Folder Handlers ---
+  const [isSecureActionLoading, setIsSecureActionLoading] = React.useState(false);
+  const [showSetupPin, setShowSetupPin] = React.useState(false);
+  const [showOldPin, setShowOldPin] = React.useState(false);
+  const [showNewPin, setShowNewPin] = React.useState(false);
+  const [showResetDialog, setShowResetDialog] = React.useState(false);
+  const [resetAnswer, setResetAnswer] = React.useState("");
+  const [resetNewPin, setResetNewPin] = React.useState("");
+  const [showResetNewPin, setShowResetNewPin] = React.useState(false);
+
+  const handleSetupSecure = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPin || !securityQuestion || !securityAnswer) return;
+    setIsSecureActionLoading(true);
+    try {
+      const res = await fetch("/api/user/secure-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setup", pin: newPin, securityQuestion, securityAnswer }),
+      });
+      if (res.ok) {
+        setSecureSetup(true);
+        setNewPin("");
+        setSecurityQuestion("");
+        setSecurityAnswer("");
+        setFetchedQuestion(securityQuestion);
+        toast({ title: "Secure Folder Set Up", description: "Your secure folder is ready to use." });
+      } else {
+        const errorData = await res.json();
+        toast({ title: "Setup Failed", description: errorData.error, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: "Failed to setup secure folder", variant: "destructive" });
+    } finally {
+      setIsSecureActionLoading(false);
+    }
+  };
+
+  const handleChangeSecurePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!oldPin || !newPin) return;
+    setIsSecureActionLoading(true);
+    try {
+      const res = await fetch("/api/user/secure-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "change_password", oldPin, newPin }),
+      });
+      if (res.ok) {
+        setOldPin("");
+        setNewPin("");
+        toast({ title: "Password Changed", description: "Your secure folder password has been updated." });
+      } else {
+        const errorData = await res.json();
+        toast({ title: "Failed", description: errorData.error, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: "Failed to change password", variant: "destructive" });
+    } finally {
+      setIsSecureActionLoading(false);
+    }
+  };
+
+  const handleResetSecurePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetAnswer || !resetNewPin) return;
+    setIsSecureActionLoading(true);
+    try {
+      const res = await fetch("/api/user/secure-folder", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer: resetAnswer, newPin: resetNewPin }),
+      });
+      if (res.ok) {
+        setResetAnswer("");
+        setResetNewPin("");
+        setShowResetDialog(false);
+        toast({ title: "Password Reset", description: "Your secure folder password has been successfully reset." });
+      } else {
+        const errorData = await res.json();
+        toast({ title: "Failed", description: errorData.error, variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: "Failed to reset password", variant: "destructive" });
+    } finally {
+      setIsSecureActionLoading(false);
+    }
+  };
+
+  const handleHardResetSecure = async () => {
+    setIsSecureActionLoading(true);
+    try {
+      const res = await fetch("/api/user/secure-folder", {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setSecureSetup(false);
+        toast({ title: "Secure Folder Reset", description: "All secure files have been deleted and the folder is reset." });
+      } else {
+        toast({ title: "Reset Failed", description: "Could not reset secure folder", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: "Failed to reset secure folder", variant: "destructive" });
+    } finally {
+      setIsSecureActionLoading(false);
+    }
+  };
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
   const handleUpdateRecovery = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!passphraseInput.trim()) return;
@@ -417,6 +566,242 @@ export function SettingsPanel({
               </button>
             </div>
           </form>
+        </div>
+
+        <div className="h-[1px] bg-border" />
+
+        {/* Section 2.5: Secure Folder */}
+        <div className="space-y-4">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Secure Folder</h3>
+          
+          {secureLoading ? (
+            <div className="p-4 rounded-xl border border-border bg-card/50">
+              <span className="text-xs text-muted-foreground">Loading...</span>
+            </div>
+          ) : !secureSetup ? (
+            <form onSubmit={handleSetupSecure} className="space-y-4 p-4 rounded-xl border border-border bg-card/50">
+              <div className="space-y-1">
+                <h4 className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                  <ShieldCheck size={16} className="text-primary" />
+                  Setup Secure Folder
+                </h4>
+                <p className="text-xs text-muted-foreground leading-relaxed mb-4">
+                  Set a password and a security question to protect your secure folder.
+                </p>
+              </div>
+              <div className="grid gap-3 max-w-sm">
+                <div className="space-y-1.5">
+                  <Label htmlFor="newPin" className="text-xs font-medium">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="newPin"
+                      type={showSetupPin ? "text" : "password"}
+                      placeholder="Enter a secure password"
+                      value={newPin}
+                      onChange={(e) => setNewPin(e.target.value)}
+                      className="h-9 pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSetupPin(!showSetupPin)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showSetupPin ? <EyeSlash size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="secQuestion" className="text-xs font-medium">Security Question</Label>
+                  <Input
+                    id="secQuestion"
+                    placeholder="e.g. What is your pet's name?"
+                    value={securityQuestion}
+                    onChange={(e) => setSecurityQuestion(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="secAnswer" className="text-xs font-medium">Answer</Label>
+                  <Input
+                    id="secAnswer"
+                    placeholder="Your answer"
+                    value={securityAnswer}
+                    onChange={(e) => setSecurityAnswer(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={!newPin || !securityQuestion || !securityAnswer || isSecureActionLoading}
+                  className="bg-primary text-primary-foreground hover:bg-primary/95 disabled:opacity-50 px-4 py-2 rounded-lg text-xs font-medium mt-2 w-fit"
+                >
+                  Setup
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-4">
+              <form onSubmit={handleChangeSecurePassword} className="space-y-4 p-4 rounded-xl border border-border bg-card/50">
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <ShieldCheck size={16} className="text-primary" />
+                    Change Secure Password
+                  </h4>
+                </div>
+                <div className="flex flex-col gap-3 max-w-sm">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="oldPin" className="text-xs font-medium">Current Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="oldPin"
+                        type={showOldPin ? "text" : "password"}
+                        placeholder="Current Password"
+                        value={oldPin}
+                        onChange={(e) => setOldPin(e.target.value)}
+                        className="h-9 pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowOldPin(!showOldPin)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showOldPin ? <EyeSlash size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="newPinChange" className="text-xs font-medium">New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="newPinChange"
+                        type={showNewPin ? "text" : "password"}
+                        placeholder="New Password"
+                        value={newPin}
+                        onChange={(e) => setNewPin(e.target.value)}
+                        className="h-9 pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPin(!showNewPin)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showNewPin ? <EyeSlash size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 mt-1">
+                    <button
+                      type="submit"
+                      disabled={!oldPin || !newPin || isSecureActionLoading}
+                      className="bg-primary text-primary-foreground hover:bg-primary/95 disabled:opacity-50 px-4 py-2 rounded-lg text-xs font-medium w-fit"
+                    >
+                      Change Password
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowResetDialog(true)}
+                      className="text-xs text-primary hover:underline font-medium"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                </div>
+              </form>
+
+              {/* Reset Password Dialog */}
+              <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Reset Secure Folder Password</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Answer your security question to reset your password.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <form onSubmit={handleResetSecurePassword} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium text-muted-foreground">Security Question</Label>
+                      <p className="text-sm font-medium">{fetchedQuestion || "Not set"}</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="resetAnswer" className="text-xs font-medium">Answer</Label>
+                      <Input
+                        id="resetAnswer"
+                        placeholder="Your answer"
+                        value={resetAnswer}
+                        onChange={(e) => setResetAnswer(e.target.value)}
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="resetNewPin" className="text-xs font-medium">New Password</Label>
+                      <div className="relative">
+                        <Input
+                          id="resetNewPin"
+                          type={showResetNewPin ? "text" : "password"}
+                          placeholder="New Password"
+                          value={resetNewPin}
+                          onChange={(e) => setResetNewPin(e.target.value)}
+                          className="h-9 pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowResetNewPin(!showResetNewPin)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showResetNewPin ? <EyeSlash size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                    <AlertDialogFooter className="mt-4">
+                      <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+                      <button
+                        type="submit"
+                        disabled={!resetAnswer || !resetNewPin || isSecureActionLoading}
+                        className="bg-primary text-primary-foreground hover:bg-primary/95 disabled:opacity-50 px-4 py-2 rounded-lg text-sm font-medium h-9"
+                      >
+                        Reset Password
+                      </button>
+                    </AlertDialogFooter>
+                  </form>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <div className="p-4 rounded-xl border border-destructive/20 bg-destructive/5 space-y-3">
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium text-destructive flex items-center gap-1.5">
+                    <Warning size={16} />
+                    Reset Secure Folder
+                  </h4>
+                  <p className="text-xs text-destructive/80 leading-relaxed max-w-[400px]">
+                    If you forget your password and security question, you can reset your secure folder. 
+                    <strong> This will permanently delete all files inside the secure folder.</strong>
+                  </p>
+                </div>
+                <AlertDialog>
+                  <AlertDialogTrigger 
+                    disabled={isSecureActionLoading}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90 px-4 py-2 rounded-lg text-xs font-medium w-fit"
+                  >
+                    Hard Reset
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete ALL files in your secure folder. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleHardResetSecure} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                        Yes, hard reset
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="h-[1px] bg-border" />
