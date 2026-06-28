@@ -1543,7 +1543,7 @@ function MediaGalleryContent({
   return (
     <>
       <ContextMenu>
-        <ContextMenuTrigger className="flex-1 w-full min-h-[450px] block">
+        <ContextMenuTrigger disabled={isMobileDevice} className="flex-1 w-full min-h-[450px] block">
           {renderContent()}
         </ContextMenuTrigger>
 
@@ -1814,6 +1814,7 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
   return (
     <ContextMenu>
       <ContextMenuTrigger
+        disabled={typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window))}
         render={
           <div
             onClick={handleClick}
