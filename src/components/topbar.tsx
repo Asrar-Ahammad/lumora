@@ -21,6 +21,8 @@ import {
 import { UserButton } from "@clerk/nextjs";
 import { useTheme } from "next-themes";
 import { flushSync } from "react-dom";
+import { useCrypto } from "./crypto-provider";
+import { decryptText } from "@/lib/crypto";
 
 interface TopbarProps {
   query: string;
@@ -35,6 +37,7 @@ interface TopbarProps {
   isSearchIndexLoaded?: boolean;
   onNavigate?: (folderId: string, folderName: string, folderKey?: CryptoKey) => void;
   onOpenViewer?: (node: any, nodeKey: CryptoKey, name: string, fileIv: string) => void;
+  aiSearchEnabled?: boolean;
 }
 
 export function Topbar({
@@ -49,12 +52,19 @@ export function Topbar({
   loadSearchIndex,
   isSearchIndexLoaded = false,
   onNavigate,
-  onOpenViewer
+  onOpenViewer,
+  aiSearchEnabled = false
 }: TopbarProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
   const [showSuggestions, setShowSuggestions] = React.useState(false);
   const [suggestionIdx, setSuggestionIdx] = React.useState(0);
+  const { decryptNodeKeyCascade } = useCrypto();
+  
+  // Semantic search autocomplete logic
+  const [debouncedQuery, setDebouncedQuery] = React.useState("");
+  const [semanticResults, setSemanticResults] = React.useState<any[]>([]);
+  const [isSearchingSemantic, setIsSearchingSemantic] = React.useState(false);
   
   const searchContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -148,18 +158,109 @@ export function Topbar({
     return crumbs.length > 0 ? crumbs.join(" / ") : "";
   }, [decFoldersMap]);
 
+  React.useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [query]);
+
+  React.useEffect(() => {
+    if (!aiSearchEnabled || !debouncedQuery.trim()) {
+      setSemanticResults([]);
+      return;
+    }
+
+    let active = true;
+
+    async function fetchSemanticResults() {
+      try {
+        setIsSearchingSemantic(true);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(debouncedQuery)}`);
+        if (!res.ok) throw new Error("Semantic autocomplete search failed");
+        const data = await res.json();
+        
+        const rawNodes = data.nodes || [];
+        const folders = data.folders || [];
+        
+        const fMap = new Map();
+        folders.forEach((f: any) => fMap.set(f.id, f));
+        
+        const decryptedList: any[] = [];
+        
+        await Promise.all(
+          rawNodes.map(async (node: any) => {
+            try {
+              const key = await decryptNodeKeyCascade(node, fMap);
+              let name = node.name;
+              let fileIv: string | undefined;
+              if (node.nameEnc && node.nameIV) {
+                const decName = await decryptText(node.nameEnc, key, node.nameIV);
+                try {
+                  const parsed = JSON.parse(decName);
+                  name = parsed.name || parsed.filename;
+                  fileIv = parsed.fileIv;
+                } catch {
+                  name = decName;
+                }
+              }
+              decryptedList.push({
+                ...node,
+                name,
+                nodeKey: key,
+                fileIv: fileIv || undefined
+              });
+            } catch (err) {
+              console.error("Failed to decrypt semantic node in topbar:", node.id, err);
+            }
+          })
+        );
+        
+        if (active) {
+          setSemanticResults(decryptedList);
+        }
+      } catch (err) {
+        console.error("Semantic search autocomplete error:", err);
+      } finally {
+        if (active) {
+          setIsSearchingSemantic(false);
+        }
+      }
+    }
+
+    fetchSemanticResults();
+    return () => {
+      active = false;
+    };
+  }, [debouncedQuery, aiSearchEnabled, decryptNodeKeyCascade]);
+
   // Compute top 5 matching items for suggestions
   const suggestions = React.useMemo(() => {
     if (query.trim() === "") return [];
-    return decryptedSearchNodes
-      .filter((node) => {
-        const matchesName = node.name.toLowerCase().includes(query.toLowerCase());
-        const pathStr = getBreadcrumbPath(node.parentId).toLowerCase();
-        const matchesPath = pathStr.includes(query.toLowerCase());
-        return matchesName || matchesPath;
-      })
-      .slice(0, 5);
-  }, [decryptedSearchNodes, query, getBreadcrumbPath]);
+    
+    // Always calculate local exact/partial matches
+    const localMatches = decryptedSearchNodes.filter((node) => {
+      const matchesName = node.name.toLowerCase().includes(query.toLowerCase());
+      const pathStr = getBreadcrumbPath(node.parentId).toLowerCase();
+      const matchesPath = pathStr.includes(query.toLowerCase());
+      return matchesName || matchesPath;
+    });
+
+    if (aiSearchEnabled) {
+      // Combine exact string matches with semantic matches, deduplicate by node id
+      const combined = [...localMatches];
+      const existingIds = new Set(localMatches.map((n: any) => n.id));
+      for (const node of semanticResults) {
+        if (!existingIds.has(node.id)) {
+          combined.push(node);
+          existingIds.add(node.id);
+        }
+      }
+      return combined.slice(0, 5);
+    }
+    
+    return localMatches.slice(0, 5);
+  }, [decryptedSearchNodes, semanticResults, aiSearchEnabled, query, getBreadcrumbPath]);
 
   // Reset index when query updates
   React.useEffect(() => {
@@ -174,7 +275,7 @@ export function Topbar({
         onNavigate(node.id, node.name, node.nodeKey);
       }
     } else {
-      if (onOpenViewer && node.nodeKey && node.fileIv) {
+      if (onOpenViewer && node.nodeKey) {
         onOpenViewer(node, node.nodeKey, node.name, node.fileIv);
       }
     }
@@ -263,10 +364,10 @@ export function Topbar({
           {/* Autocomplete suggestion card */}
           {showSuggestions && query.trim() !== "" && (
             <div className="absolute top-[calc(100%+6px)] left-0 w-full bg-background border border-border/80 shadow-xl rounded-2xl overflow-hidden backdrop-blur-md z-[50] p-1 flex flex-col gap-0.5 animate-in fade-in slide-in-from-top-2 duration-100 select-none">
-              {!isSearchIndexLoaded ? (
+              {!isSearchIndexLoaded || isSearchingSemantic ? (
                 <div className="flex items-center justify-center py-4 gap-2 text-xs text-muted-foreground">
                   <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  <span>Decrypting search index...</span>
+                  <span>{isSearchingSemantic ? "Performing semantic search..." : "Decrypting search index..."}</span>
                 </div>
               ) : suggestions.length === 0 ? (
                 <div className="py-4 text-center text-xs text-muted-foreground">

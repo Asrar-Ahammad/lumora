@@ -21,11 +21,13 @@ export async function GET(req: Request) {
     const embedding = embedResp.data[0].embedding;
     const embeddingStr = `[${embedding.join(",")}]`;
 
-    // Query nodes using pgvector similarity search
+    // Query nodes using pgvector similarity search with a distance threshold
     const results = await prisma.$queryRaw`
       SELECT id, type, "mimeType", "r2Key", "nameEnc", "nameIV", "nodeKeyEnc", "nodeKeyIV", "parentId", "captionEnc", "captionIV", "sizeBytes", "createdAt"
       FROM "Node"
-      WHERE "userId" = ${userId} AND "embedding" IS NOT NULL
+      WHERE "userId" = ${userId} 
+        AND "embedding" IS NOT NULL
+        AND "embedding" <=> ${embeddingStr}::vector < 0.8
       ORDER BY "embedding" <=> ${embeddingStr}::vector
       LIMIT 20;
     `;

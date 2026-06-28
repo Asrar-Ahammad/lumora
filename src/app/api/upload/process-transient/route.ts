@@ -121,9 +121,10 @@ Mime Type: ${mimeType}`,
       description || `file, ${filename.split(".").pop() || "unknown"}, document`
     );
 
-    // Generate Text Embedding from clean tags
+    // Generate Text Embedding from filename and clean tags
+    const embedInput = `${filename}, ${finalTags}`;
     const embedResp = await openai.embeddings.create({
-      input: finalTags,
+      input: embedInput,
       model: "text-embedding-3-small",
     });
     const embedding = embedResp.data[0].embedding;

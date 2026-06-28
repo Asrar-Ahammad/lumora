@@ -7,6 +7,8 @@ import {
   Cloud, ShieldCheck, X, Gear
 } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Separator } from "@/components/ui/separator";
 
 interface SidebarProps {
   activeCategory: string;
@@ -68,10 +70,24 @@ export function Sidebar({
     const handleMouseUp = () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "default";
     };
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "col-resize";
+  };
+
+  const renderTooltip = (trigger: React.ReactElement, label: string) => {
+    if (isCollapsed) {
+      return (
+        <Tooltip>
+          <TooltipTrigger render={trigger} />
+          <TooltipContent side="right" sideOffset={10}>{label}</TooltipContent>
+        </Tooltip>
+      );
+    }
+    return trigger;
   };
 
   return (
@@ -100,42 +116,48 @@ export function Sidebar({
         </button>
       </div>
 
-      <nav className={`flex-1 px-3 mt-4 overflow-y-auto space-y-6 ${isCollapsed ? "px-1.5" : ""}`}>
-        {/* My Drive Button */}
-        <div>
-          <button 
-            onClick={() => setActiveCategory("drive")}
-            className={`flex items-center transition-colors font-medium ${
-              isCollapsed
-                ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "drive" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
-                : `w-full justify-start gap-4 px-4 py-2.5 rounded-full ${activeCategory === "drive" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
-            }`}
-            title={isCollapsed ? "My Drive" : undefined}
-          >
-            <HardDrive size={22} weight={activeCategory === "drive" ? "fill" : "regular"} className="flex-shrink-0" />
-            {!isCollapsed && <span className="truncate">My Drive</span>}
-          </button>
-        </div>
+      <TooltipProvider delay={200}>
+        <nav className={`flex-1 px-3 mt-4 overflow-y-auto space-y-6 ${isCollapsed ? "px-1.5" : ""}`}>
+        {/* Main Drive Links */}
+        <div className="space-y-1">
+          {/* My Drive Button */}
+          {renderTooltip(
+            <button 
+              onClick={() => setActiveCategory("drive")}
+              className={`flex items-center transition-colors font-medium ${
+                isCollapsed
+                  ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "drive" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                  : `w-full justify-start gap-4 px-4 py-2.5 rounded-full ${activeCategory === "drive" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+              }`}
+            >
+              <HardDrive size={22} weight={activeCategory === "drive" ? "fill" : "regular"} className="flex-shrink-0" />
+              {!isCollapsed && <span className="truncate">My Drive</span>}
+            </button>,
+            "My Drive"
+          )}
 
-        {/* Starred Button */}
-        <div>
-          <button 
-            onClick={() => setActiveCategory("starred")}
-            className={`flex items-center transition-colors font-medium ${
-              isCollapsed
-                ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "starred" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
-                : `w-full justify-start gap-4 px-4 py-2.5 rounded-full ${activeCategory === "starred" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
-            }`}
-            title={isCollapsed ? "Starred" : undefined}
-          >
-            <Star size={22} weight={activeCategory === "starred" ? "fill" : "regular"} className="flex-shrink-0" />
-            {!isCollapsed && <span className="truncate">Starred</span>}
-          </button>
+          {/* Starred Button */}
+          {renderTooltip(
+            <button 
+              onClick={() => setActiveCategory("starred")}
+              className={`flex items-center transition-colors font-medium ${
+                isCollapsed
+                  ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "starred" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                  : `w-full justify-start gap-4 px-4 py-2.5 rounded-full ${activeCategory === "starred" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+              }`}
+            >
+              <Star size={22} weight={activeCategory === "starred" ? "fill" : "regular"} className="flex-shrink-0" />
+              {!isCollapsed && <span className="truncate">Starred</span>}
+            </button>,
+            "Starred"
+          )}
         </div>
 
         {/* Categories Section */}
         <div>
-          {!isCollapsed && (
+          {isCollapsed ? (
+            <Separator className="my-4 mx-auto w-8 bg-border" />
+          ) : (
             <h3 className="px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 select-none">Categories</h3>
           )}
           <ul className="space-y-1">
@@ -179,61 +201,68 @@ export function Sidebar({
 
         {/* Trash Section */}
         <div>
-          {!isCollapsed && (
+          {isCollapsed ? (
+            <Separator className="my-4 mx-auto w-8 bg-border" />
+          ) : (
             <h3 className="px-4 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 select-none">Other</h3>
           )}
           <ul className="space-y-1">
             <li>
-              <button
-                onClick={() => setActiveCategory("trash")}
-                className={`flex items-center transition-colors relative font-medium ${
-                  isCollapsed
-                    ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "trash" ? "bg-destructive/10 text-destructive" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
-                    : `w-full gap-4 px-4 py-2.5 rounded-full ${activeCategory === "trash" ? "bg-destructive/10 text-destructive" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
-                }`}
-                title={isCollapsed ? "Trash" : undefined}
-              >
-                <Trash
-                  size={22}
-                  weight={activeCategory === "trash" ? "fill" : "regular"}
-                  className={`flex-shrink-0 ${activeCategory === "trash" ? "text-destructive" : ""}`}
-                />
-                {!isCollapsed && <span className="flex-1 text-left truncate">Trash</span>}
-                {trashCount > 0 && (
-                  <Badge
-                    variant={activeCategory === "trash" ? "destructive" : "secondary"}
-                    className={
-                      isCollapsed 
-                        ? "absolute -top-1.5 -right-1.5 text-[9px] h-4.5 min-w-[18px] px-1 font-semibold rounded-full flex items-center justify-center scale-90 shadow-sm"
-                        : "text-[10px] h-5 min-w-[20px] px-1.5 font-semibold"
-                    }
-                  >
-                    {trashCount > 99 ? "99+" : trashCount}
-                  </Badge>
-                )}
-              </button>
+              {renderTooltip(
+                <button
+                  onClick={() => setActiveCategory("trash")}
+                  className={`flex items-center transition-colors relative font-medium ${
+                    isCollapsed
+                      ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "trash" ? "bg-destructive/10 text-destructive" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                      : `w-full gap-4 px-4 py-2.5 rounded-full ${activeCategory === "trash" ? "bg-destructive/10 text-destructive" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                  }`}
+                >
+                  <Trash
+                    size={22}
+                    weight={activeCategory === "trash" ? "fill" : "regular"}
+                    className={`flex-shrink-0 ${activeCategory === "trash" ? "text-destructive" : ""}`}
+                  />
+                  {!isCollapsed && <span className="flex-1 text-left truncate">Trash</span>}
+                  {trashCount > 0 && (
+                    <Badge
+                      variant={activeCategory === "trash" ? "destructive" : "secondary"}
+                      className={
+                        isCollapsed 
+                          ? "absolute -top-1.5 -right-1.5 text-[9px] h-4.5 min-w-[18px] px-1 font-semibold rounded-full flex items-center justify-center scale-90 shadow-sm"
+                          : "text-[10px] h-5 min-w-[20px] px-1.5 font-semibold"
+                      }
+                    >
+                      {trashCount > 99 ? "99+" : trashCount}
+                    </Badge>
+                  )}
+                </button>,
+                "Trash"
+              )}
             </li>
             <li>
-              <button
-                onClick={() => setActiveCategory("storage")}
-                className={`flex items-center transition-colors relative font-medium ${
-                  isCollapsed
-                    ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "storage" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
-                    : `w-full gap-4 px-4 py-2.5 rounded-full ${activeCategory === "storage" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
-                }`}
-                title={isCollapsed ? "Storage" : undefined}
-              >
-                <Cloud
-                  size={22}
-                  weight={activeCategory === "storage" ? "fill" : "regular"}
-                  className={`flex-shrink-0 ${activeCategory === "storage" ? "text-primary" : ""}`}
-                />
-                {!isCollapsed && <span className="flex-1 text-left truncate">Storage</span>}
-              </button>
+              {renderTooltip(
+                <button
+                  onClick={() => setActiveCategory("storage")}
+                  className={`flex items-center transition-colors relative font-medium ${
+                    isCollapsed
+                      ? `w-11 h-11 rounded-full mx-auto justify-center ${activeCategory === "storage" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                      : `w-full gap-4 px-4 py-2.5 rounded-full ${activeCategory === "storage" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+                  }`}
+                >
+                  <Cloud
+                    size={22}
+                    weight={activeCategory === "storage" ? "fill" : "regular"}
+                    className={`flex-shrink-0 ${activeCategory === "storage" ? "text-primary" : ""}`}
+                  />
+                  {!isCollapsed && <span className="flex-1 text-left truncate">Storage</span>}
+                </button>,
+                "Storage"
+              )}
             </li>
           </ul>
         </div>
       </nav>
+      </TooltipProvider>
 
       {/* Storage Indicator */}
       {!isCollapsed ? (
@@ -343,9 +372,12 @@ export function Sidebar({
 
             {/* Nav */}
             <nav className="flex-1 px-3 mt-4 overflow-y-auto space-y-6">
-              <div>
+              <div className="space-y-1">
                 <button 
-                  onClick={() => setActiveCategory("drive")}
+                  onClick={() => {
+                    setActiveCategory("drive");
+                    setIsMobileOpen?.(false);
+                  }}
                   className={`flex items-center w-full justify-start gap-4 px-4 py-2.5 rounded-full transition-colors font-medium ${
                     activeCategory === "drive" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"
                   }`}
@@ -353,9 +385,7 @@ export function Sidebar({
                   <HardDrive size={22} weight={activeCategory === "drive" ? "fill" : "regular"} className="flex-shrink-0" />
                   <span className="truncate">My Drive</span>
                 </button>
-              </div>
 
-              <div>
                 <button 
                   onClick={() => {
                     setActiveCategory("starred");
@@ -458,20 +488,30 @@ interface NavItemProps {
 }
 
 function NavItem({ icon, label, active, onClick, isCollapsed }: NavItemProps) {
-  return (
-    <li>
-      <button 
-        onClick={onClick}
-        className={`flex items-center rounded-full font-medium transition-colors ${
-          isCollapsed 
-            ? `justify-center w-11 h-11 mx-auto ${active ? "bg-muted/85 text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
-            : `justify-start w-full gap-4 px-4 py-2.5 ${active ? "bg-muted/85 text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
-        }`}
-        title={isCollapsed ? label : undefined}
-      >
-        <span className="flex-shrink-0">{icon}</span>
-        {!isCollapsed && <span className="truncate">{label}</span>}
-      </button>
-    </li>
+  const content = (
+    <button 
+      onClick={onClick}
+      className={`flex items-center rounded-full font-medium transition-colors ${
+        isCollapsed 
+          ? `justify-center w-11 h-11 mx-auto ${active ? "bg-muted/85 text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+          : `justify-start w-full gap-4 px-4 py-2.5 ${active ? "bg-muted/85 text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground cursor-pointer"}`
+      }`}
+    >
+      <span className="flex-shrink-0">{icon}</span>
+      {!isCollapsed && <span className="truncate">{label}</span>}
+    </button>
   );
+
+  if (isCollapsed) {
+    return (
+      <li>
+        <Tooltip>
+          <TooltipTrigger render={content} />
+          <TooltipContent side="right" sideOffset={10}>{label}</TooltipContent>
+        </Tooltip>
+      </li>
+    );
+  }
+
+  return <li>{content}</li>;
 }

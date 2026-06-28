@@ -182,6 +182,7 @@ export async function POST(req: Request) {
       r2Key,
       captionEnc,
       captionIV,
+      embedding,
     } = body;
 
     if (!type || !nameEnc || !nameIV || !nodeKeyEnc || !nodeKeyIV) {
@@ -209,8 +210,18 @@ export async function POST(req: Request) {
         r2Key,
         captionEnc,
         captionIV,
+        aiProcessed: !!embedding,
       },
     });
+
+    if (embedding && Array.isArray(embedding)) {
+      const embeddingStr = `[${embedding.join(",")}]`;
+      await prisma.$executeRaw`
+        UPDATE "Node"
+        SET "embedding" = ${embeddingStr}::vector
+        WHERE id = ${newNode.id}
+      `;
+    }
 
     revalidateTag(`user-nodes-${userId}`);
 

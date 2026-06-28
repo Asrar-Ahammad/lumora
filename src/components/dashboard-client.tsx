@@ -116,6 +116,11 @@ export function DashboardClient() {
     };
   }, []);
 
+  // Invalidate search index cache when files are added/removed/modified
+  React.useEffect(() => {
+    setIsSearchIndexLoaded(false);
+  }, [refreshTrigger]);
+
   const [isUploadOpen, setIsUploadOpen] = React.useState(false);
   const [draggedFiles, setDraggedFiles] = React.useState<File[]>([]);
   const [isDashboardDragging, setIsDashboardDragging] = React.useState(false);
@@ -528,6 +533,30 @@ export function DashboardClient() {
     }
   };
 
+  const handleSelectFileFromSearch = React.useCallback(
+    (node: any) => {
+      setIsSearchDialogOpen(false);
+      setQuery("");
+
+      if (node.parentId) {
+        const parentFolder = decFoldersMap.get(node.parentId);
+        if (parentFolder) {
+          handleNavigate(parentFolder.id, parentFolder.name, parentFolder.nodeKey);
+        } else {
+          handleNavigate(node.parentId);
+        }
+      } else {
+        handleNavigate("root", "Root", cryptoKey);
+      }
+
+      setTimeout(() => {
+        setSelectedNode(node);
+        setIsInfoPanelOpen(true);
+      }, 50);
+    },
+    [decFoldersMap, handleNavigate, cryptoKey]
+  );
+
   const handleBreadcrumbClick = (id: string, index: number) => {
     handleNavigate(id);
   };
@@ -729,10 +758,10 @@ export function DashboardClient() {
           loadSearchIndex={loadSearchIndex}
           isSearchIndexLoaded={isSearchIndexLoaded}
           onNavigate={handleNavigate}
-          onOpenViewer={(node, nodeKey, name, fileIv) => {
-            setGlobalViewerNode(node);
-            setGlobalViewerKey(nodeKey);
+          onOpenViewer={(node) => {
+            handleSelectFileFromSearch(node);
           }}
+          aiSearchEnabled={isAISearch}
         />
         
         {isAISearch && (
@@ -763,7 +792,7 @@ export function DashboardClient() {
             />
           ) : (
             /* File explorer main panel */
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col pb-28">
 
               {/* Folder explorer header & actions */}
               <div className="flex items-center justify-between mb-4 md:mb-6 gap-2">
@@ -1187,14 +1216,14 @@ export function DashboardClient() {
         isOpen={isSearchDialogOpen}
         onClose={() => setIsSearchDialogOpen(false)}
         onNavigate={handleNavigate}
-        onOpenViewer={(node, nodeKey, name, fileIv) => {
-          setGlobalViewerNode(node);
-          setGlobalViewerKey(nodeKey);
+        onOpenViewer={(node) => {
+          handleSelectFileFromSearch(node);
         }}
         decryptedSearchNodes={decryptedSearchNodes}
         decFoldersMap={decFoldersMap}
         indexing={indexingSearch}
         loadSearchIndex={loadSearchIndex}
+        aiSearchEnabled={isAISearch}
       />
 
       {/* Global File Viewer for search results */}

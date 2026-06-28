@@ -36,11 +36,12 @@ interface UniversalSearchDialogProps {
   isOpen: boolean
   onClose: () => void
   onNavigate: (folderId: string, folderName: string, folderKey?: CryptoKey) => void
-  onOpenViewer: (node: any, nodeKey: CryptoKey, name: string, fileIv: string) => void
+  onOpenViewer: (node: any) => void
   decryptedSearchNodes: SearchItem[]
   decFoldersMap: Map<string, any>
   indexing: boolean
   loadSearchIndex: () => void
+  aiSearchEnabled?: boolean
 }
 
 type SearchItem = {
@@ -65,7 +66,8 @@ export function UniversalSearchDialog({
   decryptedSearchNodes,
   decFoldersMap,
   indexing,
-  loadSearchIndex
+  loadSearchIndex,
+  aiSearchEnabled = false
 }: UniversalSearchDialogProps) {
   const [query, setQuery] = React.useState("")
   
@@ -101,6 +103,87 @@ export function UniversalSearchDialog({
     }
   }, [isOpen, loadSearchIndex])
 
+  // Semantic search state & debouncing
+  const [debouncedQuery, setDebouncedQuery] = React.useState("")
+  const [semanticResults, setSemanticResults] = React.useState<SearchItem[]>([])
+  const [isSearchingSemantic, setIsSearchingSemantic] = React.useState(false)
+  const { decryptNodeKeyCascade } = useCrypto()
+
+  React.useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedQuery(query)
+    }, 500)
+    return () => clearTimeout(handler)
+  }, [query])
+
+  React.useEffect(() => {
+    if (!aiSearchEnabled || !debouncedQuery.trim()) {
+      setSemanticResults([])
+      return
+    }
+
+    let active = true
+
+    async function fetchSemanticResults() {
+      try {
+        setIsSearchingSemantic(true)
+        const res = await fetch(`/api/search?q=${encodeURIComponent(debouncedQuery)}`)
+        if (!res.ok) throw new Error("Semantic search query failed")
+        const data = await res.json()
+        
+        const rawNodes = data.nodes || []
+        const folders = data.folders || []
+        
+        const fMap = new Map()
+        folders.forEach((f: any) => fMap.set(f.id, f))
+        
+        const decryptedList = (await Promise.all(
+          rawNodes.map(async (node: any) => {
+            try {
+              const key = await decryptNodeKeyCascade(node, fMap)
+              let name = node.name
+              let fileIv: string | undefined
+              if (node.nameEnc && node.nameIV) {
+                const decName = await decryptText(node.nameEnc, key, node.nameIV)
+                try {
+                  const parsed = JSON.parse(decName)
+                  name = parsed.name || parsed.filename
+                  fileIv = parsed.fileIv
+                } catch {
+                  name = decName
+                }
+              }
+              return {
+                ...node,
+                name,
+                nodeKey: key,
+                fileIv: fileIv || undefined
+              } as SearchItem
+            } catch (err) {
+              console.error("Failed to decrypt semantic search node:", node.id, err)
+              return null
+            }
+          })
+        )).filter(Boolean) as SearchItem[]
+        
+        if (active) {
+          setSemanticResults(decryptedList)
+        }
+      } catch (err) {
+        console.error("Semantic search error:", err)
+      } finally {
+        if (active) {
+          setIsSearchingSemantic(false)
+        }
+      }
+    }
+
+    fetchSemanticResults()
+    return () => {
+      active = false
+    }
+  }, [debouncedQuery, aiSearchEnabled, decryptNodeKeyCascade])
+
   // Reset keyboard cursor on query/filters update
   React.useEffect(() => {
     setSelectedIdx(0)
@@ -121,14 +204,35 @@ export function UniversalSearchDialog({
 
   // Filter criteria execution
   const filteredResults = React.useMemo(() => {
-    return decryptedSearchNodes.filter((node) => {
-      // 1. Text Query Filter
-      if (query.trim() !== "") {
-        const matchesName = node.name.toLowerCase().includes(query.toLowerCase())
-        const pathStr = getBreadcrumbPath(node.parentId).toLowerCase()
-        const matchesPath = pathStr.includes(query.toLowerCase())
-        if (!matchesName && !matchesPath) return false
+    let sourceList: SearchItem[] = [];
+
+    if (query.trim() === "") {
+      sourceList = decryptedSearchNodes;
+    } else {
+      // 1. Local String Matching (always runs)
+      const localMatches = decryptedSearchNodes.filter((node) => {
+        const matchesName = node.name.toLowerCase().includes(query.toLowerCase());
+        const pathStr = getBreadcrumbPath(node.parentId).toLowerCase();
+        const matchesPath = pathStr.includes(query.toLowerCase());
+        return matchesName || matchesPath;
+      });
+
+      if (aiSearchEnabled) {
+        // Combine exact string matches with semantic matches, deduplicate by id
+        sourceList = [...localMatches];
+        const existingIds = new Set(localMatches.map((n) => n.id));
+        for (const node of semanticResults) {
+          if (!existingIds.has(node.id)) {
+            sourceList.push(node);
+            existingIds.add(node.id);
+          }
+        }
+      } else {
+        sourceList = localMatches;
       }
+    }
+
+    return sourceList.filter((node) => {
 
       // 2. Type Filter
       if (filterType === "file" && node.type !== "FILE") return false
@@ -178,7 +282,7 @@ export function UniversalSearchDialog({
 
       return true
     })
-  }, [decryptedSearchNodes, query, filterType, filterCategory, filterDate, filterSize, getBreadcrumbPath])
+  }, [decryptedSearchNodes, query, filterType, filterCategory, filterDate, filterSize, getBreadcrumbPath, semanticResults, aiSearchEnabled])
 
   // Select node action handler
   const handleSelectNode = (node: SearchItem) => {
@@ -186,8 +290,8 @@ export function UniversalSearchDialog({
       onNavigate(node.id, node.name, node.nodeKey)
       onClose()
     } else {
-      if (node.nodeKey && node.fileIv) {
-        onOpenViewer(node, node.nodeKey, node.name, node.fileIv)
+      if (node.nodeKey) {
+        onOpenViewer(node)
         onClose()
       }
     }
@@ -529,10 +633,12 @@ export function UniversalSearchDialog({
 
         {/* Results Container */}
         <div className="flex-1 max-h-[45vh] md:max-h-[380px] min-h-[180px] overflow-y-auto p-2" onKeyDown={handleKeyDown}>
-          {indexing ? (
+          {indexing || isSearchingSemantic ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm text-muted-foreground">Indexing and decrypting storage...</span>
+              <span className="text-sm text-muted-foreground">
+                {isSearchingSemantic ? "Performing semantic search..." : "Indexing and decrypting storage..."}
+              </span>
             </div>
           ) : filteredResults.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
