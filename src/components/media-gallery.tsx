@@ -2012,14 +2012,42 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 
   const isMobileDevice = typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window));
 
+  const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!isMobileDevice) return;
+    const target = e.currentTarget;
+    longPressTimer.current = setTimeout(() => {
+      onOptionsClick(item, target as HTMLElement);
+    }, 500);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const handleTouchMove = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
   const gridContent = (
     <div
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchMove}
       onContextMenu={(e) => {
         if (isMobileDevice) {
           e.preventDefault();
           e.stopPropagation();
+          // Fallback if long press didn't trigger
           onOptionsClick(item, e.currentTarget);
         } else {
           handleClick(e as any);
@@ -2321,14 +2349,42 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
 
   const isMobileDevice = typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window));
 
+  const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!isMobileDevice) return;
+    const target = e.currentTarget;
+    longPressTimer.current = setTimeout(() => {
+      onOptionsClick(item, target as HTMLElement);
+    }, 500);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const handleTouchMove = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
   const rowContent = (
     <tr
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchMove}
       onContextMenu={(e) => {
         if (isMobileDevice) {
           e.preventDefault();
           e.stopPropagation();
+          // Fallback if long press didn't trigger
           onOptionsClick(item, e.currentTarget);
         } else {
           handleClick(e as any);
