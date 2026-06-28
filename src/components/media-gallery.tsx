@@ -1543,7 +1543,7 @@ function MediaGalleryContent({
   return (
     <>
       <ContextMenu>
-        <ContextMenuTrigger disabled={isMobileDevice} className="flex-1 w-full min-h-[450px] block">
+        <ContextMenuTrigger className="flex-1 w-full min-h-[450px] block">
           {renderContent()}
         </ContextMenuTrigger>
 
@@ -1811,94 +1811,98 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
     }
   };
 
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger
-        disabled={typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window))}
-        render={
-          <div
-            onClick={handleClick}
-            onDoubleClick={handleDoubleClick}
-            onContextMenu={handleClick}
-            draggable={activeCategory === "drive" && renameNodeId !== item.id}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={`group border rounded-2xl p-3 bg-card hover:shadow-md transition-all cursor-pointer flex flex-col gap-3 min-w-0 ${isDragOver ? "border-dashed border-2 border-primary bg-primary/10 ring-2 ring-primary/30 animate-pulse" :
-                isSelected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border hover:border-primary/50"
-              }`}
-          />
-        }
-      >
-        {/* Top Header Row (matches reference photo: Icon, name, actions button) */}
-        <div className="flex items-center justify-between gap-2 w-full min-w-0">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <div className="flex-shrink-0">
-              {item.type === "FOLDER" ? (
-                <Folder weight="fill" size={18} className="text-yellow-500" />
-              ) : (
-                <div className="scale-75 origin-left -mr-1">
-                  {getFileIcon(item.mimeType, item.name)}
-                </div>
-              )}
-            </div>
+  const isMobileDevice = typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window));
 
-            {renameNodeId === item.id ? (
-              <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="text"
-                  value={tempName}
-                  onChange={(e) => setTempName(e.target.value)}
-                  disabled={isRenamingLoading}
-                  className="w-full bg-muted border border-primary rounded px-2 py-0.5 outline-none text-xs text-foreground focus:ring-1 focus:ring-primary/30 min-w-0 disabled:opacity-50"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !isRenamingLoading) {
-                      e.stopPropagation();
-                      handleSubmit(tempName.trim());
-                    } else if (e.key === "Escape" && !isRenamingLoading) {
-                      e.stopPropagation();
-                      setRenameNodeId(null);
-                    }
-                  }}
-                  autoFocus
-                  onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                />
-              </div>
+  const gridContent = (
+    <div
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
+      onContextMenu={handleClick}
+      draggable={activeCategory === "drive" && renameNodeId !== item.id}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`group border rounded-2xl p-3 bg-card hover:shadow-md transition-all cursor-pointer flex flex-col gap-3 min-w-0 ${isDragOver ? "border-dashed border-2 border-primary bg-primary/10 ring-2 ring-primary/30 animate-pulse" :
+          isSelected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border hover:border-primary/50"
+        }`}
+    >
+      {/* Top Header Row (matches reference photo: Icon, name, actions button) */}
+      <div className="flex items-center justify-between gap-2 w-full min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="flex-shrink-0">
+            {item.type === "FOLDER" ? (
+              <Folder weight="fill" size={18} className="text-yellow-500" />
             ) : (
-              <h4 className="text-xs font-semibold text-foreground truncate select-none flex items-center gap-1" title={item.name}>
-                {item.name}
-                {item.starred && (
-                  <Star size={12} weight="fill" className="text-yellow-500 shrink-0 ml-0.5" />
-                )}
-              </h4>
+              <div className="scale-75 origin-left -mr-1">
+                {getFileIcon(item.mimeType, item.name)}
+              </div>
             )}
           </div>
 
-          <div className="relative inline-block text-left" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onOptionsClick(item, e.currentTarget);
-              }}
-              className={`p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer ${
-                isDropdownOpen ? "opacity-100 bg-muted/50" : "opacity-100 md:opacity-0 md:group-hover:opacity-100"
-              }`}
-              title="More actions"
-            >
-              <DotsThreeVertical size={18} weight="bold" />
-            </button>
-          </div>
+          {renameNodeId === item.id ? (
+            <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="text"
+                value={tempName}
+                onChange={(e) => setTempName(e.target.value)}
+                disabled={isRenamingLoading}
+                className="w-full bg-muted border border-primary rounded px-2 py-0.5 outline-none text-xs text-foreground focus:ring-1 focus:ring-primary/30 min-w-0 disabled:opacity-50"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isRenamingLoading) {
+                    e.stopPropagation();
+                    handleSubmit(tempName.trim());
+                  } else if (e.key === "Escape" && !isRenamingLoading) {
+                    e.stopPropagation();
+                    setRenameNodeId(null);
+                  }
+                }}
+                autoFocus
+                onClick={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          ) : (
+            <h4 className="text-xs font-semibold text-foreground truncate select-none flex items-center gap-1" title={item.name}>
+              {item.name}
+              {item.starred && (
+                <Star size={12} weight="fill" className="text-yellow-500 shrink-0 ml-0.5" />
+              )}
+            </h4>
+          )}
         </div>
 
-        {/* Middle Area: File Preview (dynamic from decryptFile or custom fallback styles) */}
-        <div className="w-full">
-          <NodePreview item={item} />
+        <div className="relative inline-block text-left" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onOptionsClick(item, e.currentTarget);
+            }}
+            className={`p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer ${
+              isDropdownOpen ? "opacity-100 bg-muted/50" : "opacity-100 md:opacity-0 md:group-hover:opacity-100"
+            }`}
+            title="More actions"
+          >
+            <DotsThreeVertical size={18} weight="bold" />
+          </button>
         </div>
+      </div>
 
-      </ContextMenuTrigger>
+      {/* Middle Area: File Preview (dynamic from decryptFile or custom fallback styles) */}
+      <div className="w-full">
+        <NodePreview item={item} />
+      </div>
+    </div>
+  );
+
+  if (isMobileDevice) {
+    return gridContent;
+  }
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger render={gridContent} />
 
       <ContextMenuContent className="w-48 bg-card/85 backdrop-blur-md border border-border/80 shadow-lg rounded-xl p-1.5 animate-in fade-in-50 duration-100 select-none">
         <ContextMenuItem
