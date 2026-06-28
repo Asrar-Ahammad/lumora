@@ -19,6 +19,7 @@ import {
 } from "@phosphor-icons/react";
 import { useUser } from "@clerk/nextjs";
 import { useToast } from "@/hooks/use-toast";
+import { LoadingScreen } from "@/components/loading-screen";
 
 type SelectedNodeData = {
   id: string;
@@ -612,12 +613,6 @@ export function DashboardClient() {
     } catch (err) {
       console.error("Create folder failed", err);
       toast({
-        title: (
-          <span className="flex items-center gap-2">
-            <XCircle size={16} weight="fill" className="text-destructive" />
-            Failed to create folder
-          </span>
-        ),
         description: "An unexpected error occurred.",
         variant: "destructive",
       });
@@ -637,87 +632,7 @@ export function DashboardClient() {
   };
 
   if (!isUserLoaded || !isReady || !currentFolderId || !currentFolderKey) {
-    return (
-      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background overflow-hidden">
-        {/* Subtle radial background glow */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-primary/[0.03] blur-[100px]" />
-        </div>
-
-        <div className="relative flex flex-col items-center gap-8 max-w-sm px-6 text-center z-10">
-          {/* Animated logo mark with orbiting ring */}
-          <div className="relative w-20 h-20">
-            {/* Outer orbiting ring */}
-            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 80 80" style={{ animation: "lumora-orbit 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite" }}>
-              <circle cx="40" cy="40" r="36" fill="none" stroke="hsl(var(--primary))" strokeWidth="2" strokeLinecap="round" strokeDasharray="60 166" opacity="0.6" />
-            </svg>
-            {/* Secondary ring counter-rotating */}
-            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 80 80" style={{ animation: "lumora-orbit 3.6s cubic-bezier(0.4, 0, 0.2, 1) infinite reverse" }}>
-              <circle cx="40" cy="40" r="28" fill="none" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="30 146" opacity="0.25" />
-            </svg>
-            {/* Center shield / lock icon */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div style={{ animation: "lumora-breathe 2s ease-in-out infinite" }}>
-                <ShieldCheck size={28} weight="duotone" className="text-primary" />
-              </div>
-            </div>
-          </div>
-
-          {/* Brand name with shimmer */}
-          <div className="space-y-3">
-            <h2
-              className="text-3xl font-bold tracking-tight select-none"
-              style={{
-                background: "linear-gradient(110deg, hsl(var(--primary)) 0%, hsl(var(--primary)/0.6) 40%, hsl(var(--primary)) 50%, hsl(var(--primary)/0.6) 60%, hsl(var(--primary)) 100%)",
-                backgroundSize: "200% 100%",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                animation: "lumora-shimmer 2.5s ease-in-out infinite",
-              }}
-            >
-              Lumora
-            </h2>
-            <p className="text-xs text-muted-foreground/70 font-medium tracking-wide">
-              Preparing your secure vault
-            </p>
-          </div>
-
-          {/* Staggered loading dots */}
-          <div className="flex items-center gap-1.5">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="w-1.5 h-1.5 rounded-full bg-primary/60"
-                style={{
-                  animation: "lumora-dot 1.4s ease-in-out infinite",
-                  animationDelay: `${i * 0.2}s`,
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Inline keyframes */}
-        <style>{`
-          @keyframes lumora-orbit {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          @keyframes lumora-breathe {
-            0%, 100% { transform: scale(1); opacity: 0.85; }
-            50% { transform: scale(1.08); opacity: 1; }
-          }
-          @keyframes lumora-shimmer {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-          }
-          @keyframes lumora-dot {
-            0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
-            40% { transform: scale(1.2); opacity: 1; }
-          }
-        `}</style>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (

@@ -1817,7 +1817,15 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
     <div
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
-      onContextMenu={handleClick}
+      onContextMenu={(e) => {
+        if (isMobileDevice) {
+          e.preventDefault();
+          e.stopPropagation();
+          onOptionsClick(item, e.currentTarget);
+        } else {
+          handleClick(e as any);
+        }
+      }}
       draggable={activeCategory === "drive" && renameNodeId !== item.id}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
@@ -2093,7 +2101,15 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
     <tr
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
-      onContextMenu={handleClick}
+      onContextMenu={(e) => {
+        if (isMobileDevice) {
+          e.preventDefault();
+          e.stopPropagation();
+          onOptionsClick(item, e.currentTarget);
+        } else {
+          handleClick(e as any);
+        }
+      }}
       draggable={activeCategory === "drive" && renameNodeId !== item.id}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
