@@ -128,7 +128,13 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       let captionIV = null;
       let embeddingVector = null;
 
-      if (aiSearchEnabled) {
+      const skipAIProcessing = 
+        file.type.startsWith("audio/") || 
+        file.type.startsWith("video/") || 
+        file.type === "application/vnd.android.package-archive" || 
+        file.name.toLowerCase().endsWith(".apk");
+
+      if (aiSearchEnabled && !skipAIProcessing) {
         updateEntry(id, { status: "processing-ai", progress: 20 });
         const bodyFormData = new FormData();
         bodyFormData.append("file", file);
@@ -152,10 +158,10 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       const initRes = await fetch("/api/upload/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mimeType: file.type, sizeBytes: file.size }),
+        body: JSON.stringify({ mimeType: file.type, sizeBytes: encryptedBlob.size }),
       });
       if (!initRes.ok) throw new Error(`Init failed (${initRes.status})`);
-      const { r2Key } = await initRes.json();
+      const { r2Key, presignedUrl } = await initRes.json();
 
       // 4. XHR upload with progress
       await new Promise<void>((resolve, reject) => {
@@ -166,6 +172,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
             file.type
           )}`
         );
+        xhr.setRequestHeader("Content-Type", file.type);
 
         xhr.upload.onprogress = (ev) => {
           if (ev.lengthComputable) {

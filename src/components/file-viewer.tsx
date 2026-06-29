@@ -68,10 +68,11 @@ export function FileViewer({ isOpen, onClose, node, nodeKey }: FileViewerProps) 
 
         const encryptedBuffer = await res.arrayBuffer();
         const decryptedBlob = await decryptFile(encryptedBuffer, nodeKey, fileIv);
+        const typedBlob = new Blob([decryptedBlob], { type: node.mimeType || "application/octet-stream" });
 
         if (!active) return;
 
-        localBlobUrl = URL.createObjectURL(decryptedBlob);
+        localBlobUrl = URL.createObjectURL(typedBlob);
         setBlobUrl(localBlobUrl);
 
         // Check if file type is text or csv

@@ -503,7 +503,7 @@ export function StoragePanel({
   const percentArchive = totalSize > 0 ? (stats.archive / maxCapacity) * 100 : 0;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col select-none">
+    <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col select-none pb-24">
       
       {/* Top Header Row */}
       <div className="flex items-center justify-between mb-6">

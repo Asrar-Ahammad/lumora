@@ -1,19 +1,19 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { r2Client, bucketName } from "@/lib/r2";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { generatePresignedGetUrl } from "@/lib/r2";
+
+// Use edge runtime for streaming large files without serverless limits
+export const runtime = "edge";
 
 export async function GET(req: Request) {
   try {
     const { userId } = await auth();
-    console.log("Download Proxy Request:", { userId });
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { searchParams } = new URL(req.url);
     const key = searchParams.get("key");
-    console.log("Requested Key:", key);
 
     if (!key) {
       return NextResponse.json({ error: "Missing key" }, { status: 400 });
@@ -21,28 +21,26 @@ export async function GET(req: Request) {
 
     // Ensure the key belongs to the current user (starts with userId/)
     if (!key.startsWith(`${userId}/`)) {
-      console.warn("Unauthorized path attempt:", { key, userId });
       return NextResponse.json({ error: "Unauthorized path" }, { status: 403 });
     }
 
-    const command = new GetObjectCommand({
-      Bucket: bucketName,
-      Key: key,
-    });
+    const presignedUrl = await generatePresignedGetUrl(key);
 
-    const response = await r2Client.send(command);
+    // Fetch from R2 and stream it back to the client directly
+    // This bypasses CORS because the server is doing the fetching
+    const r2Response = await fetch(presignedUrl);
 
-    if (!response.Body) {
-      return NextResponse.json({ error: "Object not found" }, { status: 404 });
+    if (!r2Response.ok) {
+      return NextResponse.json({ error: `Failed to fetch from storage: ${r2Response.status}` }, { status: r2Response.status });
     }
 
-    // transformToWebStream is standard on Smithy/AWS SDK v3 streams
-    const stream = response.Body.transformToWebStream();
-
-    return new Response(stream, {
+    // Forward the response body and relevant headers (like Content-Type)
+    return new NextResponse(r2Response.body, {
+      status: r2Response.status,
       headers: {
-        "Content-Type": response.ContentType || "application/octet-stream",
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Content-Type": r2Response.headers.get("content-type") || "application/octet-stream",
+        "Content-Length": r2Response.headers.get("content-length") || "",
+        "Cache-Control": "public, max-age=3600, immutable",
       },
     });
   } catch (error) {
@@ -50,3 +48,4 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
+

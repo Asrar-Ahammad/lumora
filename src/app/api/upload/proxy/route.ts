@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { r2Client, bucketName } from "@/lib/r2";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { generatePresignedPutUrl } from "@/lib/r2";
+
+// Use edge runtime for streaming large files without the 4.5MB serverless payload limit
+export const runtime = "edge";
 
 export async function POST(req: Request) {
   try {
@@ -23,17 +25,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized path" }, { status: 403 });
     }
 
-    const arrayBuffer = await req.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    // Generate a presigned URL internally
+    const url = await generatePresignedPutUrl(key, mimeType, Number(req.headers.get("content-length")) || 0);
 
-    const command = new PutObjectCommand({
-      Bucket: bucketName,
-      Key: key,
-      Body: buffer,
-      ContentType: mimeType,
+    // Stream the body directly to R2!
+    // Using fetch with duplex: 'half' allows streaming a ReadableStream body directly
+    const r2Response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": mimeType,
+      },
+      body: req.body,
+      // @ts-expect-error: Undocumented fetch duplex property for streaming
+      duplex: "half", 
     });
 
-    await r2Client.send(command);
+    if (!r2Response.ok) {
+      const errorText = await r2Response.text();
+      console.error("R2 Proxy Upload Error:", errorText);
+      return NextResponse.json({ error: `R2 upload failed: ${r2Response.status}` }, { status: r2Response.status });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

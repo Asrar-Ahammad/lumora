@@ -540,7 +540,7 @@ export function DashboardClient() {
             );
             if (!folderName) {
               const decryptedName = await decryptText(target.nameEnc, folderNodeKey, target.nameIV);
-              setBreadcrumbs([...breadcrumbs, { id: folderId, name: decryptedName }]);
+              setBreadcrumbs((prev) => [...prev, { id: folderId, name: decryptedName }]);
             }
             setCurrentFolderKey(folderNodeKey);
             setCurrentFolderId(folderId);
@@ -553,7 +553,7 @@ export function DashboardClient() {
       };
       loadFolderFallback();
     }
-  }, [decryptNodeKeyCascade]);
+  }, [decryptNodeKeyCascade, nodeKeysCache]);
 
   const handleSelectFileFromSearch = React.useCallback(
     (node: any) => {

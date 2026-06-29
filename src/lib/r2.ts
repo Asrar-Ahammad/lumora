@@ -17,6 +17,7 @@ export const r2Client = new S3Client({
     accessKeyId,
     secretAccessKey,
   },
+  forcePathStyle: true,
 });
 
 export async function generatePresignedPutUrl(key: string, contentType: string, sizeBytes: number) {
@@ -24,7 +25,6 @@ export async function generatePresignedPutUrl(key: string, contentType: string, 
     Bucket: bucketName,
     Key: key,
     ContentType: contentType,
-    ContentLength: sizeBytes,
   });
 
   return getSignedUrl(r2Client, command, { expiresIn: 900 }); // 15 min expiry

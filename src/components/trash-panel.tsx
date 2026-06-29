@@ -4,11 +4,13 @@ import * as React from "react"
 import { useCrypto } from "./crypto-provider"
 import { decryptText } from "@/lib/crypto"
 import { NodePreview } from "./node-preview"
+import { FileViewer } from "./file-viewer"
 import {
   Trash,
   ArrowCounterClockwise,
   TrashSimple,
   Folder,
+  CaretRight,
   File,
   FilePdf,
   FileAudio,
@@ -134,6 +136,11 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
   const [nextCursor, setNextCursor] = React.useState<string | null>(null)
   const [isLoadingMore, setIsLoadingMore] = React.useState(false)
 
+  const [currentFolderId, setCurrentFolderId] = React.useState<string | null>(null)
+  const prevFolderId = React.useRef<string | null>(null)
+  const [breadcrumbs, setBreadcrumbs] = React.useState<{id: string, name: string}[]>([])
+  const [viewerNode, setViewerNode] = React.useState<DecryptedTrashedNode | null>(null)
+
   const handleLoadMore = React.useCallback(() => {
     if ((window as any)._loadMoreTrashFiles) {
       ;(window as any)._loadMoreTrashFiles()
@@ -166,10 +173,19 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
     if (isLoadMore) {
       setIsLoadingMore(true)
     } else {
+      if (prevFolderId.current !== currentFolderId) {
+        setItems([])
+        setDecryptedItems([])
+        setNextCursor(null)
+      }
       setLoading(true)
+      prevFolderId.current = currentFolderId
     }
     try {
       let endpoint = "/api/nodes/trash?limit=50"
+      if (currentFolderId) {
+        endpoint += `&folderId=${currentFolderId}`
+      }
       if (cursor) {
         endpoint += `&cursor=${cursor}`
       }
@@ -197,11 +213,31 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
       setLoading(false)
       setIsLoadingMore(false)
     }
-  }, [isReady])
+  }, [isReady, currentFolderId])
 
   React.useEffect(() => {
     fetchTrash()
-  }, [fetchTrash, refreshTrigger])
+  }, [fetchTrash, refreshTrigger, currentFolderId])
+
+  const handleNodeClick = (item: DecryptedTrashedNode) => {
+    if (item.type === "FOLDER") {
+      setCurrentFolderId(item.id)
+      setBreadcrumbs(prev => [...prev, { id: item.id, name: item.name }])
+    } else {
+      setViewerNode(item)
+    }
+  }
+
+  const handleBreadcrumbClick = (index: number) => {
+    if (index === -1) {
+      setCurrentFolderId(null)
+      setBreadcrumbs([])
+    } else {
+      const crumb = breadcrumbs[index]
+      setCurrentFolderId(crumb.id)
+      setBreadcrumbs(breadcrumbs.slice(0, index + 1))
+    }
+  }
 
   React.useEffect(() => {
     ;(window as any)._loadMoreTrashFiles = () => {
@@ -397,9 +433,26 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
           </div>
           <div>
             <h2 className="text-lg font-semibold text-foreground tracking-tight flex items-center gap-2">
-              Trash
+              <span 
+                className={`cursor-pointer hover:underline ${breadcrumbs.length > 0 ? "text-muted-foreground hover:text-foreground" : ""}`}
+                onClick={() => handleBreadcrumbClick(-1)}
+              >
+                Trash
+              </span>
+              {breadcrumbs.map((crumb, idx) => (
+                <React.Fragment key={crumb.id}>
+                  <CaretRight size={14} className="text-muted-foreground" />
+                  <span 
+                    className={`cursor-pointer hover:underline max-w-[120px] truncate ${idx === breadcrumbs.length - 1 ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    onClick={() => handleBreadcrumbClick(idx)}
+                    title={crumb.name}
+                  >
+                    {crumb.name}
+                  </span>
+                </React.Fragment>
+              ))}
               {decryptedItems.length > 0 && (
-                <Badge variant="secondary" className="text-xs font-medium">
+                <Badge variant="secondary" className="text-xs font-medium ml-2">
                   {decryptedItems.length}
                 </Badge>
               )}
@@ -488,7 +541,7 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
       )}
 
       {/* Content */}
-      {loading ? (
+      {loading && decryptedItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center flex-1 py-20 text-muted-foreground">
           <Trash size={40} className="opacity-30 mb-3 animate-pulse" />
           <p className="text-sm animate-pulse">Loading trash…</p>
@@ -505,6 +558,7 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
                 actionLoading={actionLoading}
                 onRestore={handleRestore}
                 onDeleteForever={handleDeleteForever}
+                onClick={() => handleNodeClick(item)}
               />
             ))}
           </div>
@@ -546,6 +600,7 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
                   actionLoading={actionLoading}
                   onRestore={handleRestore}
                   onDeleteForever={handleDeleteForever}
+                  onClick={() => handleNodeClick(item)}
                 />
               ))}
             </tbody>
@@ -564,6 +619,15 @@ export function TrashPanel({ refreshTrigger, onRefresh }: TrashPanelProps) {
           )}
         </div>
       )}
+
+      {viewerNode && viewerNode.nodeKey && (
+        <FileViewer
+          isOpen={!!viewerNode}
+          onClose={() => setViewerNode(null)}
+          node={viewerNode as any}
+          nodeKey={viewerNode.nodeKey}
+        />
+      )}
     </div>
   )
 }
@@ -575,11 +639,13 @@ function TrashRow({
   actionLoading,
   onRestore,
   onDeleteForever,
+  onClick,
 }: {
   item: DecryptedTrashedNode
   actionLoading: string | null
   onRestore: (id: string) => void
   onDeleteForever: (id: string) => void
+  onClick: () => void
 }) {
   const { label, urgent } = getTimeLeft(item.deletesAt)
   const isRestoring = actionLoading === item.id + "-restore"
@@ -590,7 +656,7 @@ function TrashRow({
     <ContextMenu>
       <ContextMenuTrigger
         render={
-          <tr className="hover:bg-muted/30 transition-colors group cursor-pointer" />
+          <tr className="hover:bg-muted/30 transition-colors group cursor-pointer" onClick={onClick} />
         }
       >
         {/* Name */}
@@ -648,7 +714,7 @@ function TrashRow({
             <Tooltip>
               <TooltipTrigger
                 disabled={isRestoring || isDeleting}
-                onClick={() => onRestore(item.id)}
+                onClick={(e) => { e.stopPropagation(); onRestore(item.id); }}
                 className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors disabled:opacity-40 cursor-pointer"
                 aria-label="Restore"
               >
@@ -665,7 +731,7 @@ function TrashRow({
             <Tooltip>
               <TooltipTrigger
                 disabled={isRestoring || isDeleting}
-                onClick={() => setDeleteDialogOpen(true)}
+                onClick={(e) => { e.stopPropagation(); setDeleteDialogOpen(true); }}
                 className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40 cursor-pointer"
                 aria-label="Delete Forever"
               >
@@ -740,11 +806,13 @@ function TrashCard({
   actionLoading,
   onRestore,
   onDeleteForever,
+  onClick,
 }: {
   item: DecryptedTrashedNode
   actionLoading: string | null
   onRestore: (id: string) => void
   onDeleteForever: (id: string) => void
+  onClick: () => void
 }) {
   const { label, urgent } = getTimeLeft(item.deletesAt)
   const isRestoring = actionLoading === item.id + "-restore"
@@ -755,7 +823,7 @@ function TrashCard({
     <ContextMenu>
       <ContextMenuTrigger
         render={
-          <div className="group border rounded-2xl p-3 bg-card hover:shadow-md transition-all cursor-pointer flex flex-col gap-3 min-w-0 border-border hover:border-primary/50 relative" />
+          <div className="group border rounded-2xl p-3 bg-card hover:shadow-md transition-all cursor-pointer flex flex-col gap-3 min-w-0 border-border hover:border-primary/50 relative" onClick={onClick} />
         }
       >
         <div className="flex items-center justify-between gap-2 w-full min-w-0">
@@ -800,7 +868,7 @@ function TrashCard({
             <Tooltip>
               <TooltipTrigger
                 disabled={isRestoring || isDeleting}
-                onClick={() => onRestore(item.id)}
+                onClick={(e) => { e.stopPropagation(); onRestore(item.id); }}
                 className="p-1 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors disabled:opacity-40 cursor-pointer"
                 aria-label="Restore"
               >
@@ -817,7 +885,7 @@ function TrashCard({
             <Tooltip>
               <TooltipTrigger
                 disabled={isRestoring || isDeleting}
-                onClick={() => setDeleteDialogOpen(true)}
+                onClick={(e) => { e.stopPropagation(); setDeleteDialogOpen(true); }}
                 className="p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40 cursor-pointer"
                 aria-label="Delete Forever"
               >

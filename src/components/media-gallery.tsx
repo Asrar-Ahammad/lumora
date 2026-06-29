@@ -102,6 +102,7 @@ export function MediaGallery({
   const { toast } = useToast()
 
   const decryptedCache = React.useRef<Map<string, { decNodes: DecryptedNodeData[]; foldersMap: Map<string, any>; nextCursor: string | null }>>(new Map())
+  const prevCacheKey = React.useRef<string>("")
   const [foldersMap, setFoldersMap] = React.useState<Map<string, any>>(new Map())
   const [loading, setLoading] = React.useState(true)
   const [decryptedItems, setDecryptedItems] = React.useState<DecryptedNodeData[]>([])
@@ -782,9 +783,12 @@ export function MediaGallery({
           setLoading(false);
           return;
         } else {
-          setDecryptedItems([]);
+          if (prevCacheKey.current !== cacheKey) {
+            setDecryptedItems([]);
+          }
           setNextCursor(null);
           setLoading(true);
+          prevCacheKey.current = cacheKey;
         }
       } else {
         setIsLoadingMore(true);
@@ -1727,7 +1731,7 @@ function MediaGalleryContent({
     );
   };
 
-  const isMobileDevice = typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window));
+  const isMobileDevice = typeof window !== 'undefined' && window.matchMedia("(max-width: 768px)").matches;
 
   if (isMobileDevice) {
     return (
@@ -2017,7 +2021,7 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
     }
   };
 
-  const isMobileDevice = typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window));
+  const isMobileDevice = typeof window !== 'undefined' && window.matchMedia("(max-width: 768px)").matches;
 
   const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -2060,7 +2064,13 @@ function GridItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           handleClick(e as any);
         }
       }}
-      draggable={activeCategory === "drive" && renameNodeId !== item.id}
+      onPointerDownCapture={(e) => {
+        if (!isMobileDevice && e.pointerType === "mouse" && e.button === 0) {
+          // Allow native drag and drop by preventing context menu from swallowing left click
+          e.stopPropagation();
+        }
+      }}
+      draggable={activeCategory === "drive" && renameNodeId !== item.id && !isMobileDevice}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnter={handleDragEnter}
@@ -2363,7 +2373,7 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
     }
   };
 
-  const isMobileDevice = typeof window !== 'undefined' && (window.matchMedia("(max-width: 768px)").matches || ("ontouchstart" in window));
+  const isMobileDevice = typeof window !== 'undefined' && window.matchMedia("(max-width: 768px)").matches;
 
   const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -2406,7 +2416,13 @@ function ListItem({ item, activeCategory, onNavigate, onSelect, selectedNodeId, 
           handleClick(e as any);
         }
       }}
-      draggable={activeCategory === "drive" && renameNodeId !== item.id}
+      onPointerDownCapture={(e) => {
+        if (!isMobileDevice && e.pointerType === "mouse" && e.button === 0) {
+          // Allow native drag and drop by preventing context menu from swallowing left click
+          e.stopPropagation();
+        }
+      }}
+      draggable={activeCategory === "drive" && renameNodeId !== item.id && !isMobileDevice}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnter={handleDragEnter}

@@ -15,17 +15,28 @@ const r2 = new S3Client({
 
 const TRASH_TTL_DAYS = 30;
 
-const getTrashNodes = async (userId: string, cursor: string | null, limit: number) => {
+const getTrashNodes = async (userId: string, cursor: string | null, limit: number, folderId: string | null = null) => {
   const take = limit + 1;
   const skip = cursor ? 1 : 0;
   const cursorObj = cursor ? { id: cursor } : undefined;
 
+  const whereClause: any = {
+    userId,
+    trashedAt: { not: null },
+  };
+
+  if (folderId) {
+    whereClause.parentId = folderId;
+  } else {
+    whereClause.OR = [
+      { parentId: null },
+      { parent: { trashedAt: null } }
+    ];
+  }
+
   return await prisma.node.findMany({
     take, skip, cursor: cursorObj,
-    where: {
-      userId,
-      trashedAt: { not: null },
-    },
+    where: whereClause,
     orderBy: { trashedAt: "desc" },
   });
 };
@@ -82,8 +93,10 @@ export async function GET(req: Request) {
       revalidateTag(`user-trash-${userId}`);
     }
 
+    const folderId = searchParams.get("folderId");
+
     // Fetch remaining trashed nodes
-    const trashedNodes = await getTrashNodes(userId, cursor, limit);
+    const trashedNodes = await getTrashNodes(userId, cursor, limit, folderId);
     let nextCursor: string | null = null;
     
     if (trashedNodes.length > limit) {
@@ -143,6 +156,9 @@ export async function PATCH(req: Request) {
     if (node.type === "FOLDER") {
       await restoreDescendants(id, userId);
     }
+    
+    // Also restore all ancestor nodes if they are in the trash
+    await restoreAncestors(node.parentId, userId);
 
     revalidateTag(`user-nodes-${userId}`);
     revalidateTag(`user-trash-${userId}`);
@@ -242,5 +258,17 @@ async function restoreDescendants(folderId: string, userId: string) {
     if (child.type === "FOLDER") {
       await restoreDescendants(child.id, userId);
     }
+  }
+}
+
+async function restoreAncestors(parentId: string | null, userId: string) {
+  if (!parentId) return;
+  const parent = await prisma.node.findUnique({
+    where: { id: parentId, userId },
+    select: { id: true, parentId: true, trashedAt: true },
+  });
+  if (parent && parent.trashedAt !== null) {
+    await prisma.node.update({ where: { id: parent.id }, data: { trashedAt: null } });
+    await restoreAncestors(parent.parentId, userId);
   }
 }
